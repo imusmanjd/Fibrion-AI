@@ -191,9 +191,21 @@ class WeavingModule(ProcessModule):
             covered_orders = set(by_order["order_id"])
             excluded_order_ids = sorted(all_orders - covered_orders)
 
+        _MONTH_ORDER = ["January", "February", "March", "April", "May", "June",
+                         "July", "August", "September", "October", "November", "December"]
+        monthly_raw = df.groupby("month")["total_pdn_today_yds"].sum()
+        monthly_production = {m: round(float(monthly_raw[m]), 0) for m in _MONTH_ORDER if m in monthly_raw.index}
+
         return {
             "overall": overall,
             "by_order": by_order.to_dict(orient="records"),
+            "monthly_production_yds": monthly_production,
+            "supplementary_and_non_order_summary": {
+                "supplementary_order_count": int(by_order["is_supplementary"].sum()),
+                "non_order_material_count": int(by_order["is_non_order_material"].sum()),
+                "note": "excluded from headline KPIs and anomaly detection - not customer "
+                        "orders, or not comparable on the same basis",
+            },
             "excluded_orders": {
                 "count": len(excluded_order_ids),
                 "reason": "no checkpoint row found - produced/rejection cannot be determined",
