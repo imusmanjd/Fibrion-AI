@@ -14,6 +14,8 @@ pydantic-settings==2.*
 langchain-openai==0.2.*
 langsmith==0.4.*
 pyarrow==17.*
+Pillow==10.*
+weasyprint==62.*
 
 # --- dev / CI ---
 ruff==0.7.*

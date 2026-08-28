@@ -45,6 +45,10 @@ class FibrionState(BaseModel):
 
     # --- analysis outputs ---
     analysis_text: Optional[str] = None
+    analysis_executive_summary: Optional[str] = None
+    analysis_key_findings: list[str] = Field(default_factory=list)
+    analysis_likely_causes: list[str] = Field(default_factory=list)
+    analysis_recommendations: list[str] = Field(default_factory=list)
 
     # --- visualization outputs ---
     chart_paths: list[str] = Field(default_factory=list)
@@ -59,7 +63,13 @@ class FibrionState(BaseModel):
 
     # --- notification outputs ---
     delivery_status: dict[str, str] = Field(default_factory=dict)
+    telegram_chat_id: Optional[str] = None
+    recipient_email: Optional[str] = None
 
     # --- unified failure signal - every early-exit path sets this,
     # notification checks it once to decide error-message vs real report ---
     error: Optional[dict] = None
+
+    # Every LLM call across every agent appends here
+    llm_calls: list[dict] = Field(default_factory=list)
+    

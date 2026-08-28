@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     default_model_reasoning: str = "anthropic/claude-sonnet-5"
     groq_api_key: str = ""
     gemini_api_key: str = ""
-    cerebras_api_key: str = ""
+    hf_api_key: str = ""
     
 
     # --- Telegram ---

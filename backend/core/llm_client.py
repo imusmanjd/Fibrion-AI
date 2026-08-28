@@ -21,7 +21,7 @@ logger = get_agent_logger("llm_client")
 
 T = TypeVar("T", bound=BaseModel)
 ModelTier = Literal["fast", "reasoning"]
-Provider = Literal["openrouter", "gemini", "groq", "cerebras"]
+Provider = Literal["huggingface", "openrouter", "gemini", "groq", ]
 
 
 
@@ -35,17 +35,18 @@ _PROVIDERS = {
             "base_url": "https://api.groq.com/openai/v1",
             "api_key": settings.groq_api_key,
             "models": {"fast": "openai/gpt-oss-20b", "reasoning": "openai/gpt-oss-120b"},
-        },
+    },
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "api_key": settings.gemini_api_key,
         "models": {"fast": "gemini-3.5-flash-lite", "reasoning": "gemini-3.5-flash"},
     },
-        "cerebras": {
-        "base_url": "https://api.cerebras.ai/v1",
-        "api_key": settings.cerebras_api_key,
-        "models": {"fast": "llama-4-scout", "reasoning": "gpt-oss-120b"},
+        "huggingface": {
+        "base_url": "https://router.huggingface.co/v1",
+        "api_key": settings.hf_api_key,
+        "models": {"fast": "deepseek-ai/DeepSeek-V4-Flash-0731:baseten", "reasoning": "deepseek-ai/DeepSeek-V4-Flash-0731:baseten"},
     }, 
+
 }
 
 
@@ -99,13 +100,18 @@ def _try_provider(provider, tier, prompt, output_schema, max_retries, max_tokens
                    "failed": True, "error": str(last_error)}
 
 
-_PROVIDER_ORDER = ["groq", "openrouter", "gemini", "cerebras"]
+_PROVIDER_ORDER_BY_TIER = {
+    "fast": ["huggingface", "groq", "openrouter", "gemini"],
+    "reasoning": ["huggingface", "openrouter", "gemini", "groq"],
+}
+
 
 def call_structured(
     tier: ModelTier, prompt: str, output_schema: Type[T],
     max_retries: int = 1, max_tokens: int = 1024, use_fallback: bool = True,
 ) -> tuple[Optional[T], dict]:
-    providers_to_try = _PROVIDER_ORDER if use_fallback else _PROVIDER_ORDER[:1]
+    order = _PROVIDER_ORDER_BY_TIER[tier]
+    providers_to_try = order if use_fallback else order[:1]
     errors = {}
     for provider in providers_to_try:
         if not _PROVIDERS[provider]["api_key"]:
