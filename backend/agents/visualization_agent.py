@@ -29,7 +29,11 @@ plt.rcParams.update({
 
 def _save(fig, out_dir: Path, name: str) -> str:
     path = out_dir / f"{name}.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+    fig.tight_layout()  # prevents label clipping without cropping the canvas -
+                          # unlike bbox_inches="tight", which crops each chart
+                          # differently based on its own content and is exactly
+                          # why the four charts ended up different shapes
+    fig.savefig(path, dpi=150)
     plt.close(fig)
     return str(path)
 
@@ -44,7 +48,7 @@ def _chart_fulfillment_distribution(by_order: list[dict], out_dir: Path):
     # (from kpi_agent) is where those specific outliers actually show.
     display_values = [v for v in values if v <= 300]
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5.5, 3.3))
     ax.hist(display_values, bins=30, color="#4C72B0", edgecolor="white")
     ax.axvline(100, color="#C44E52", linestyle="--", linewidth=1.5, label="100% (target)")
     ax.set_xlabel("Fulfillment %")
@@ -60,7 +64,7 @@ def _chart_top_anomalies(anomalies: list[dict], out_dir: Path, n: int = 10):
     top = sorted(anomalies, key=lambda a: abs(a["z_score"]), reverse=True)[:n]
     labels = [f"{a['group_value']} ({a['metric']})" for a in top][::-1]
     z_scores = [a["z_score"] for a in top][::-1]
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5.5, 3.3))
     ax.barh(labels, z_scores, color="#DD8452")
     ax.axvline(0, color="#444444", linewidth=0.8)
     ax.set_xlabel("Z-score (standard deviations from mean)")
@@ -72,7 +76,7 @@ def _chart_by_loom(by_loom: list[dict], out_dir: Path):
     if not by_loom:
         return None
     df = pd.DataFrame(by_loom).sort_values("downtime_pct", ascending=False).head(15)
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5.5, 3.3))
     ax.barh(df["loom_id"].astype(str)[::-1], df["downtime_pct"][::-1], color="#55A868")
     ax.set_xlabel("Downtime %")
     ax.set_title("Loom downtime (highest first)")
@@ -82,7 +86,7 @@ def _chart_by_loom(by_loom: list[dict], out_dir: Path):
 def _chart_defect_breakdown(defect_breakdown: dict, out_dir: Path):
     if not defect_breakdown:
         return None
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, ax = plt.subplots(figsize=(5, 4.2))
     ax.pie(defect_breakdown.values(), labels=defect_breakdown.keys(), autopct="%1.0f%%", colors=plt.cm.Set2.colors)
     ax.set_title("Defect type breakdown")
     return _save(fig, out_dir, "defect_breakdown")
@@ -103,11 +107,21 @@ def _chart_rejection_by_construction(by_order: list[dict], out_dir: Path, top_n:
     if len(grouped) < 2:
         return None
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5.5, 3.3))
     ax.barh(grouped.index.astype(str)[::-1], grouped.values[::-1], color="#8172B3")
     ax.set_xlabel("Average rejection %")
-    ax.set_title(f"Rejection rate by fabric construction (top {len(grouped)} by order count)")
+    ax.set_title(f"Rejection % by construction (top {len(grouped)})")
     return _save(fig, out_dir, "rejection_by_construction")
+
+def _chart_monthly_production(monthly_production: dict, out_dir: Path):
+    if len(monthly_production) < 2:
+        return None
+    fig, ax = plt.subplots(figsize=(5.5, 3.3))
+    ax.bar(list(monthly_production.keys()), list(monthly_production.values()), color="#4C72B0")
+    ax.set_ylabel("Total production (yds)")
+    ax.set_title("Monthly production volume")
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right")
+    return _save(fig, out_dir, "monthly_production")
 
 def run_visualization(state: FibrionState) -> dict:
     run_id_ctx.set(state.run_id)
@@ -122,6 +136,7 @@ def run_visualization(state: FibrionState) -> dict:
 
     for chart in [
         _chart_fulfillment_distribution(kpi.get("by_order", []), out_dir),
+        _chart_monthly_production(kpi.get("monthly_production_yds", {}), out_dir),
         _chart_top_anomalies(state.anomalies, out_dir),
         _chart_rejection_by_construction(kpi.get("by_order", []), out_dir),
         _chart_by_loom(kpi.get("by_loom", []), out_dir),
