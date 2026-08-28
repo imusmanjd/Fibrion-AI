@@ -68,7 +68,7 @@ def _check_duplicates(df: pd.DataFrame) -> dict:
     return {"count": dup_count, "fraction": round(dup_count / len(df), 4)} if dup_count else {}
 
 
-def _classify_stoppages(df: pd.DataFrame, module) -> tuple[pd.DataFrame, Optional[dict]]:
+def _classify_stoppages(df: pd.DataFrame, module, llm_calls: list) -> tuple[pd.DataFrame, Optional[dict]]:
     if "stoppage_cause_raw" not in df.columns:
         return df, None
     unique_reasons = df["stoppage_cause_raw"].dropna().unique().tolist()
@@ -84,6 +84,7 @@ def _classify_stoppages(df: pd.DataFrame, module) -> tuple[pd.DataFrame, Optiona
         tier="fast", prompt=prompt, output_schema=StoppageClassification,
         max_tokens=min(4096, 200 + len(unique_reasons) * 40),
     )
+    llm_calls.append({"task": "stoppage_classification", **meta})
     if result is None:
         logger.warning(f"Stoppage classification failed: {meta}")
         return df, {"type": "stoppage_classification_failed", "detail": meta}
@@ -99,12 +100,13 @@ def run_validation(state: FibrionState) -> dict:
         logger.warning("Skipping KPI computation - no cleaned data available")
         return {}  
     module = get_process_module(state.process_type)
+    llm_calls = list(state.llm_calls)
     df = pd.read_parquet(state.cleaned_data_path)
 
     impossible_values = _check_impossible_values(df, module)
     null_issues = _check_nulls(df, module)
     duplicate_issues = _check_duplicates(df)
-    df, classification_error = _classify_stoppages(df, module)
+    df, classification_error = _classify_stoppages(df, module, llm_calls)
 
     critical_fields = [n for n, d in impossible_values.items() if d["fraction"] > CRITICAL_THRESHOLD]
     # Duplicate rows are NOT treated as critical - daily production
@@ -124,8 +126,9 @@ def run_validation(state: FibrionState) -> dict:
         return {
             "validation_report": validation_report,
             "error": {"type": "validation_critical_failure", "bad_fields": critical_fields},
+            "llm_calls": llm_calls
         }
 
     df.to_parquet(state.cleaned_data_path)  # overwrite - may now include stoppage_cause_category
     logger.info(f"Validation passed: {len(df)} rows")
-    return {"validation_report": validation_report}
+    return {"validation_report": validation_report, "llm_calls": llm_calls}
