@@ -107,7 +107,7 @@ def _estimate_max_tokens(n_items: int, per_item: int = 60, base: int = 200, ceil
     instead of guessing one flat number regardless of batch size."""
     return min(ceiling, base + n_items * per_item)
 
-def _resolve_llm_parse_derivations(df, module, field_resolutions):
+def _resolve_llm_parse_derivations(df, module, field_resolutions, llm_calls):
     pending = [
         f for f in module.required_fields
         if f.derivation and f.derivation.method == "llm_parse" and f.name not in df.columns
@@ -137,6 +137,7 @@ def _resolve_llm_parse_derivations(df, module, field_resolutions):
             tier="fast", prompt=prompt, output_schema=schema,
             max_tokens=_estimate_max_tokens(len(unique_values)),
         )
+        llm_calls.append({"task": f"parse_{source_col}", **meta})        
         if result is None:
             logger.warning(f"llm_parse derivation for {[f.name for f in fields]} failed: {meta}")
             continue
@@ -171,12 +172,13 @@ def _fuzzy_find_column(target_name: str, candidates: list[str], threshold: float
 def run_ingestion(state: FibrionState) -> dict:
     run_id_ctx.set(state.run_id)
     module = get_process_module(state.process_type)
+    llm_calls = list(state.llm_calls)
 
     try:
         df = parse_file(state.file_path)
     except FileParseError as e:
         logger.error(f"File parse failed: {e}")
-        return {"error": {"type": "ingestion_file_unreadable", "detail": str(e)}}
+        return {"error": {"type": "ingestion_file_unreadable", "detail": str(e)}, "llm_calls": llm_calls}
 
     logger.info(f"Parsed {len(df)} rows, {len(df.columns)} columns")
 
@@ -185,9 +187,10 @@ def run_ingestion(state: FibrionState) -> dict:
         tier="fast", prompt=prompt, output_schema=ColumnMapping,
         max_tokens=min(4096, 500 + len(df.columns) * 80),
     )
+    llm_calls.append({"task": "column_mapping", **meta})
     if mapping_result is None:
         logger.error(f"Column mapping call failed: {meta}")
-        return {"error": {"type": "ingestion_mapping_call_failed", "detail": meta}}
+        return {"error": {"type": "ingestion_mapping_call_failed", "detail": meta}, "llm_calls": llm_calls}
 
     column_mapping_raw = mapping_result.mappings
     valid_field_names = {f.name for f in module.required_fields}
@@ -234,7 +237,7 @@ def run_ingestion(state: FibrionState) -> dict:
             df[field.name] = numeric
 
     df = _resolve_formula_derivations(df, module, field_resolutions)
-    df = _resolve_llm_parse_derivations(df, module, field_resolutions)
+    df = _resolve_llm_parse_derivations(df, module, field_resolutions, llm_calls)
 
     missing_required = [
         f.name for f in module.required_fields
@@ -280,4 +283,5 @@ def run_ingestion(state: FibrionState) -> dict:
         "column_mapping": column_mapping,
         "unmapped_columns": unmapped_columns,
         "field_resolutions": field_resolutions,
+        "llm_calls": llm_calls,
     }
