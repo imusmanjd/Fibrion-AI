@@ -9,16 +9,30 @@ venv/
 .ruff_cache/
 _check.py
 
-# --- Environment / secrets ---
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Local environment variables
 .env
 .env.local
 .env.*.local
 
-# --- Node / Next.js (frontend, phase 3+) ---
-node_modules/
-.next/
-out/
-frontend/.env*.local
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
 
 # --- Data & generated output ---
 # Never commit real production data, generated reports, or per-run
