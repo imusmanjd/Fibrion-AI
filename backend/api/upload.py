@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile, HTTPException
 from pydantic import BaseModel, Field
 
 from core.logging_config import get_agent_logger
@@ -172,7 +172,7 @@ async def upload_production_file(
     data_dictionary: Optional[str] = Form(None),
 ):
     if not file.filename:
-        raise ValueError("Uploaded file must have a filename.")
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
 
     run_id = str(uuid.uuid4())
 
