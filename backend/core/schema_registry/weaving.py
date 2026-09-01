@@ -3,7 +3,7 @@ backend/core/schema_registry/weaving.py
 """
 
 import pandas as pd
-
+import numpy as np
 from core.schema_registry.base import (
     DerivationRule,
     FieldSpec,
@@ -167,7 +167,12 @@ class WeavingModule(ProcessModule):
         # specific order attached, confirmed directly against the real
         # data. General rule: a real order ID always contains a digit.
         by_order["is_non_order_material"] = ~by_order["order_id"].str.contains(r"\d", regex=True)
-
+        # A genuinely undefined metric (division by zero, missing
+        # input data) becomes None (JSON null), never a fabricated
+        # number and never a raw NaN/inf - the latter isn't valid
+        # JSON at all, which is what actually crashed the API.
+        by_order = by_order.replace([np.inf, -np.inf], np.nan)
+        by_order = by_order.where(pd.notna(by_order), None)
         # overall is derived from by_order, not recomputed from raw
         # rows - one source of truth, and it's what was actually wrong
         # last time. Supplementary orders excluded here too, same as
@@ -176,15 +181,19 @@ class WeavingModule(ProcessModule):
         overall = {
             "total_produced_grey_yds": float(primary["produced_grey_yds"].sum()),
             "total_required_grey_yds": float(primary["required_grey_yds"].sum()),
-            "overall_fulfillment_pct": round(
-                primary["produced_grey_yds"].sum() / primary["required_grey_yds"].sum() * 100, 2
+            "overall_fulfillment_pct": (
+                round(primary["produced_grey_yds"].sum() / primary["required_grey_yds"].sum() * 100, 2)
+                if primary["required_grey_yds"].sum() else None
             ),
-            "overall_rejection_pct": round(
-                primary["rejection_yds"].sum() / primary["produced_grey_yds"].sum() * 100, 2
+            "overall_rejection_pct": (
+                round(primary["rejection_yds"].sum() / primary["produced_grey_yds"].sum() * 100, 2)
+                if primary["produced_grey_yds"].sum() else None
             ),
-            "avg_shrink_variance_pct": round(primary["shrink_variance_pct"].mean(), 2),
+            "avg_shrink_variance_pct": (
+                round(primary["shrink_variance_pct"].mean(), 2)
+                if primary["shrink_variance_pct"].notna().any() else None
+            ),
         }
-
         excluded_order_ids = []
         if "_previous_pdn_yds_marker" in df.columns:
             all_orders = set(df["order_id"].unique())

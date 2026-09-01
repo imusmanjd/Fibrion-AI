@@ -17,6 +17,16 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Any
 
+import math
+
+def _sanitize_for_json(obj):
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 class RunStore:
     def __init__(self) -> None:
@@ -77,7 +87,7 @@ class RunStore:
             stage="complete",
             message="Fibrion analysis completed successfully.",
             progress=100,
-            result=result,
+            result=_sanitize_for_json(result),
             error=result.get("error"),
         )
 

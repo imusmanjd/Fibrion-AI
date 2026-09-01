@@ -34,17 +34,17 @@ _PROVIDERS = {
     "groq": {
             "base_url": "https://api.groq.com/openai/v1",
             "api_key": settings.groq_api_key,
-            "models": {"fast": "openai/gpt-oss-20b", "reasoning": "openai/gpt-oss-120b"},
+            "models": {"fast": "qwen/qwen3.8-27b", "reasoning": "openai/gpt-oss-120b"},
     },
     "gemini": {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "api_key": settings.gemini_api_key,
-        "models": {"fast": "gemini-3.5-flash-lite", "reasoning": "gemini-3.5-flash"},
+        "models": {"fast": "gemini-3.7-flash", "reasoning": "gemini-3.7-flash"},
     },
         "huggingface": {
         "base_url": "https://router.huggingface.co/v1",
         "api_key": settings.hf_api_key,
-        "models": {"fast": "deepseek-ai/DeepSeek-V4-Flash-0731:baseten", "reasoning": "deepseek-ai/DeepSeek-V4-Flash-0731:baseten"},
+        "models": {"fast": "deepseek-ai/DeepSeek-V4-Flash-0731", "reasoning": "deepseek-ai/DeepSeek-V4-Flash-0731"},
     }, 
 
 }
@@ -101,8 +101,8 @@ def _try_provider(provider, tier, prompt, output_schema, max_retries, max_tokens
 
 
 _PROVIDER_ORDER_BY_TIER = {
-    "fast": ["huggingface", "groq", "openrouter", "gemini"],
-    "reasoning": ["huggingface", "openrouter", "gemini", "groq"],
+    "fast": ["groq", "openrouter", "huggingface", "gemini"],
+    "reasoning": ["groq", "openrouter", "huggingface", "gemini"],
 }
 
 

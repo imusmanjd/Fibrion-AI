@@ -156,18 +156,67 @@ def _resolve_llm_parse_derivations(df, module, field_resolutions, llm_calls):
 
     return df
 
-def _fuzzy_find_column(target_name: str, candidates: list[str], threshold: float = 0.6) -> Optional[str]:
-    """Last-resort recovery for a still-missing required field, tried
-    only after exact and normalized matching both fail. Deliberately
-    the least-trusted of the three recovery tiers - callers should mark
-    anything recovered this way with reduced confidence."""
+def _fuzzy_find_column(
+    target_name: str,
+    candidates: list[str],
+    threshold: float = 0.78,
+    min_margin: float = 0.12,
+) -> Optional[str]:
+    """
+    Conservative last-resort recovery.
+
+    A fuzzy match is accepted only when:
+      1. absolute similarity is high enough
+      2. it is clearly better than the second-best candidate
+
+    This prevents ambiguous production columns from being silently
+    assigned to the wrong canonical field.
+    """
+    if not candidates:
+        return None
+
     normalized_target = _normalize_col_name(target_name)
-    best_match, best_score = None, 0.0
+
+    scored = []
+
     for col in candidates:
-        score = difflib.SequenceMatcher(None, normalized_target, _normalize_col_name(col)).ratio()
-        if score > best_score:
-            best_match, best_score = col, score
-    return best_match if best_score >= threshold else None
+        normalized_col = _normalize_col_name(col)
+
+        if not normalized_col:
+            continue
+
+        score = difflib.SequenceMatcher(
+            None,
+            normalized_target,
+            normalized_col,
+        ).ratio()
+
+        scored.append((score, col))
+
+    if not scored:
+        return None
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    best_score, best_column = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0.0
+
+    if best_score < threshold:
+        logger.info(
+            f"Fuzzy recovery rejected for '{target_name}': "
+            f"best='{best_column}' score={best_score:.2f}"
+        )
+        return None
+
+    if len(scored) > 1 and best_score - second_score < min_margin:
+        logger.warning(
+            f"Fuzzy recovery ambiguous for '{target_name}': "
+            f"best='{best_column}' ({best_score:.2f}), "
+            f"second='{scored[1][1]}' ({second_score:.2f})"
+        )
+        return None
+
+    return
 
 def run_ingestion(state: FibrionState) -> dict:
     run_id_ctx.set(state.run_id)
@@ -199,6 +248,18 @@ def run_ingestion(state: FibrionState) -> dict:
     column_mapping, invalid_targets, hallucinated_sources = {}, [], []
 
     for raw_col, canonical in column_mapping_raw.items():
+        if not isinstance(raw_col, str) or not isinstance(canonical, str):
+            continue
+
+        raw_col = raw_col.strip()
+        canonical = canonical.strip()
+
+        if not raw_col or not canonical:
+            logger.warning(
+                f"Ignoring empty LLM mapping: raw={raw_col!r}, "
+                f"canonical={canonical!r}"
+            )
+            continue
         target_col = raw_col if raw_col in real_columns else normalized_to_real.get(_normalize_col_name(raw_col))
         if target_col is None:
             hallucinated_sources.append((raw_col, canonical))
@@ -240,44 +301,135 @@ def run_ingestion(state: FibrionState) -> dict:
     df = _resolve_llm_parse_derivations(df, module, field_resolutions, llm_calls)
 
     missing_required = [
-        f.name for f in module.required_fields
-        if f.required and (f.name not in df.columns or df[f.name].isna().all())
+        f.name
+        for f in module.required_fields
+        if f.required
+        and (f.name not in df.columns or df[f.name].isna().all())
     ]
 
     if missing_required:
         still_missing = []
+
+
+
         used_as_source = set(column_mapping.keys())
+
         for field_name in missing_required:
-            field_spec = next(f for f in module.required_fields if f.name == field_name)
-            candidates = [c for c in unmapped_columns if c not in used_as_source]
-            match = _fuzzy_find_column(field_name, candidates)
+            field_spec = next(
+                f for f in module.required_fields
+                if f.name == field_name
+            )
+
+            candidates = [
+                c
+                for c in unmapped_columns
+                if c not in used_as_source
+            ]
+
+            match = _fuzzy_find_column(
+                field_name,
+                candidates,
+            )
+
             if not match:
                 still_missing.append(field_name)
                 continue
 
-            df = df.rename(columns={match: field_name})
+            df = df.rename(
+                columns={match: field_name}
+            )
+
             if field_spec.dtype == "float":
-                numeric = pd.to_numeric(df[field_name], errors="coerce")
-                non_numeric_mask = numeric.isna() & df[field_name].notna()
+                numeric = pd.to_numeric(
+                    df[field_name],
+                    errors="coerce",
+                )
+
+                non_numeric_mask = (
+                    numeric.isna()
+                    & df[field_name].notna()
+                )
+
                 if non_numeric_mask.any():
-                    df[f"_{field_name}_marker"] = df[field_name].where(non_numeric_mask)
+                    df[f"_{field_name}_marker"] = (
+                        df[field_name].where(non_numeric_mask)
+                    )
+
                 df[field_name] = numeric
 
             field_resolutions[field_name] = FieldResolution(
-                source="direct_mapping", confidence=0.6, raw_column_name=match,
+                source="direct_mapping",
+                confidence=0.6,
+                raw_column_name=match,
             )
+
             column_mapping[match] = field_name
-            unmapped_columns.remove(match)
-            logger.info(f"Fuzzy-recovered '{field_name}' from unmapped column '{match}' (last resort, confidence=0.6)")
+
+            if match in unmapped_columns:
+                unmapped_columns.remove(match)
+
+            used_as_source.add(match)
+
+            logger.info(
+                f"Fuzzy-recovered '{field_name}' "
+                f"from unmapped column '{match}' "
+                f"(last resort, confidence=0.6)"
+            )
 
         missing_required = still_missing
 
+        
+
+    # ---------------------------------------------------------------
+    # HARD INGESTION GATE
+    # ---------------------------------------------------------------
+
+        if missing_required:
+            detail = (
+                "Required canonical fields could not be resolved: "
+                + ", ".join(missing_required)
+            )
+
+            logger.error(
+                f"Ingestion failed: {detail}"
+            )
+
+            return {
+                "error": {
+                    "type": "ingestion_required_fields_missing",
+                    "detail": detail,
+                    "missing_fields": missing_required,
+                },
+                "column_mapping": column_mapping,
+                "unmapped_columns": unmapped_columns,
+                "field_resolutions": field_resolutions,
+                "llm_calls": llm_calls,
+            }
+
+    # ---------------------------------------------------------------
+    # Write cleaned dataset only after all required fields are valid
+    # ---------------------------------------------------------------
+
     out_dir = Path("outputs/tmp")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    cleaned_path = out_dir / f"{state.run_id}_cleaned.parquet"
+    out_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    cleaned_path = (
+        out_dir
+        / f"{state.run_id}_cleaned.parquet"
+    )
+
     df.to_parquet(cleaned_path)
 
-    logger.info(f"Ingestion complete: {len(df)} rows, {len(unmapped_columns)} unmapped, -> {cleaned_path}")
+    logger.info(
+        f"Ingestion complete: "
+        f"{len(df)} rows, "
+        f"{len(unmapped_columns)} unmapped, "
+        f"-> {cleaned_path}"
+    )
+
     return {
         "cleaned_data_path": str(cleaned_path),
         "column_mapping": column_mapping,

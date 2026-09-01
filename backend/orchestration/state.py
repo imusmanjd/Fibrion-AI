@@ -59,6 +59,7 @@ class FibrionState(BaseModel):
     # --- verification outputs ---
     verification_passed: Optional[bool] = None
     verification_issues: list[str] = Field(default_factory=list)
+    verification_retry_requested: bool = False
     retry_count: int = 0
 
     # --- notification outputs ---

@@ -88,6 +88,25 @@ def _build_prompt(state: FibrionState, module, distribution: dict, full_rejectio
         f"Overall KPIs for this period:\n{_format_overall_kpis(state.kpi_results['overall'])}\n\n"
         f"Fulfillment distribution across {distribution.get('total_orders_analyzed', 0)} "
         f"analyzed orders:\n{distribution.get('buckets', {})}\n\n"
+        f"""
+            IMPORTANT DISTRIBUTION INTERPRETATION RULES:
+
+            The fulfillment distribution is:
+
+            {distribution.get('buckets', {})}
+
+            There are {distribution.get('total_orders_analyzed', 0)} analyzed orders.
+
+            When describing these buckets:
+
+            - Do NOT use "most", "majority", "dominant", or similar words unless
+            the corresponding bucket is strictly greater than 50% of analyzed orders.
+            - Prefer exact counts and percentages.
+            - Do not describe a bucket as "most" merely because it is the largest bucket.
+            - If a bucket represents approximately half of the orders, say so explicitly
+            using its count and percentage.
+            - Do not make qualitative claims that contradict the supplied counts.
+        """
         f"Top flagged anomalies (statistical outliers, not necessarily problems - sorted "
         f"by z-score across all metrics):\n{top_anomalies}\n\n"
         f"Verified fact - these are the ONLY orders with exactly 100% rejection, the "

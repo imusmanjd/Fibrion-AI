@@ -10,8 +10,13 @@ Layers:
 
 Numeric verification is intentionally conservative: a number must trace
 back to a value actually produced by the pipeline or to an explicitly
-allowed reporting threshold. We do not invent complementary values such
-as 100 - fulfillment_pct.
+allowed reporting threshold.
+
+Important:
+Numeric ranges such as "0-10%" and "90-110%" are treated as ranges,
+not as negative numbers. They are intentionally excluded from numeric
+grounding because the individual endpoints are analytical thresholds,
+not independently reported KPI values.
 """
 
 import re
@@ -32,34 +37,93 @@ logger = get_agent_logger("verification")
 # Patterns
 # ---------------------------------------------------------------------------
 
-# Numbers that are NOT attached to letters. Handles:
-#   92
-#   92.4
-#   3,760,000
-#   -12.5
-#   .5 is intentionally not matched; reports normally use 0.5.
+# ---------------------------------------------------------------------------
+# Numeric ranges
+# ---------------------------------------------------------------------------
+#
+# Examples:
+#   0-10%
+#   90-110%
+#   0 - 10%
+#   90 – 110%
+#   90 to 110%
+#
+# These must be removed BEFORE numeric extraction.
+#
+# Otherwise:
+#
+#   "90-110%"
+#
+# can incorrectly become:
+#
+#   "-110%"
+#
+# which the verifier then treats as a real negative number.
+#
+_RANGE_PATTERN = re.compile(
+    r"""
+    (?<![A-Za-z0-9_])
+    -?\d[\d,]*(?:\.\d+)?
+    \s*
+    (?:
+        -
+        |
+        –
+        |
+        —
+        |
+        \bto\b
+    )
+    \s*
+    \d[\d,]*(?:\.\d+)?
+    \s*
+    %?
+    (?![A-Za-z0-9_])
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+# Numbers that are NOT attached to letters.
+
 _NUMBER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_])"
-    r"-?(?:\d[\d,]*(?:\.\d+)?|\d+\.\d+)"
+    r"-?(?:\d[\d,]*(?:\.\d+)?)"
     r"(?![A-Za-z0-9_])"
 )
+
 
 # Order IDs such as:
 #   12345-ABC
 #   1001-PO-22
+
 _ORDER_ID_PATTERN = re.compile(
-    r"\b\d{3,}-[\dA-Za-z][\dA-Za-z-]*\b"
+    r"""
+    \b
+    (?:
+        [A-Za-z]{1,10}-\d{3,}(?:-[A-Za-z0-9]+)*
+        |
+        \d{3,}-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*
+        |
+        \d{3,}-\d{3,}
+    )
+    \b
+    """,
+    re.VERBOSE,
 )
+
 
 # Values written as:
 #   3.76 million
 #   3.8 million
 #   1.25 billion
+
 _SCALED_NUMBER_PATTERN = re.compile(
     r"(?P<value>\d[\d,]*(?:\.\d+)?)\s*"
     r"(?P<scale>million|billion|thousand|m|bn|k)\b",
     re.IGNORECASE,
 )
+
 
 _PERCENT_PATTERN = re.compile(
     r"(?P<value>-?\d[\d,]*(?:\.\d+)?)\s*%"
@@ -108,13 +172,15 @@ def _add_known(known: set[float], value: object) -> None:
 
 def _collect_known_values(state: FibrionState) -> set[float]:
     """
-    Collect values that genuinely exist in pipeline output.
+    Collect numeric values that are explicitly produced by the pipeline.
+
+    The verifier must know every legitimate number that the Analysis Agent
+    is allowed to report.
 
     IMPORTANT:
-    This function must not manufacture arbitrary values such as
-    100 - fulfillment_pct. Every added value should have a traceable
-    source in the computed state.
+    We only add values that can be traced to state/KPI computation.
     """
+
     known: set[float] = set()
 
     kpi_results = state.kpi_results or {}
@@ -125,8 +191,9 @@ def _collect_known_values(state: FibrionState) -> set[float]:
 
     overall = kpi_results.get("overall") or {}
 
-    for value in overall.values():
-        _add_known(known, value)
+    if isinstance(overall, dict):
+        for value in overall.values():
+            _add_known(known, value)
 
     # ------------------------------------------------------------------
     # Derived shortfall
@@ -135,6 +202,7 @@ def _collect_known_values(state: FibrionState) -> set[float]:
     required = _normalize_number(
         overall.get("total_required_grey_yds")
     )
+
     produced = _normalize_number(
         overall.get("total_produced_grey_yds")
     )
@@ -144,13 +212,16 @@ def _collect_known_values(state: FibrionState) -> set[float]:
 
         _add_known(known, shortfall)
 
-        # Common report representation:
-        # "3.76 million yards"
-        _add_known(known, shortfall / 1_000_000)
+        # Report-friendly scaled forms
+        _add_known(
+            known,
+            shortfall / 1_000_000,
+        )
 
-        # Common rounded million representation:
-        # "3.8 million yards"
-        _add_known(known, round(shortfall / 1_000_000, 1))
+        _add_known(
+            known,
+            round(shortfall / 1_000_000, 1),
+        )
 
     # ------------------------------------------------------------------
     # Anomalies
@@ -160,8 +231,15 @@ def _collect_known_values(state: FibrionState) -> set[float]:
         if not isinstance(anomaly, dict):
             continue
 
-        for key in ("value", "run_mean", "z_score"):
-            _add_known(known, anomaly.get(key))
+        for key in (
+            "value",
+            "run_mean",
+            "z_score",
+        ):
+            _add_known(
+                known,
+                anomaly.get(key),
+            )
 
     # ------------------------------------------------------------------
     # Excluded orders
@@ -170,63 +248,104 @@ def _collect_known_values(state: FibrionState) -> set[float]:
     excluded = kpi_results.get("excluded_orders") or {}
 
     if isinstance(excluded, dict):
-        _add_known(known, excluded.get("count", 0))
+        _add_known(
+            known,
+            excluded.get("count"),
+        )
 
     # ------------------------------------------------------------------
     # Supplementary / non-order material
     # ------------------------------------------------------------------
 
     supplementary = (
-        kpi_results.get("supplementary_and_non_order_summary") or {}
+        kpi_results.get(
+            "supplementary_and_non_order_summary"
+        )
+        or {}
     )
 
     if isinstance(supplementary, dict):
         _add_known(
             known,
-            supplementary.get("supplementary_order_count", 0),
+            supplementary.get(
+                "supplementary_order_count"
+            ),
         )
+
         _add_known(
             known,
-            supplementary.get("non_order_material_count", 0),
+            supplementary.get(
+                "non_order_material_count"
+            ),
         )
 
     # ------------------------------------------------------------------
-    # Validation report
+    # Validation
     # ------------------------------------------------------------------
 
     validation = state.validation_report or {}
 
     if isinstance(validation, dict):
-        _add_known(known, validation.get("row_count", 0))
 
-        duplicates = validation.get("duplicates") or {}
+        _add_known(
+            known,
+            validation.get("row_count"),
+        )
+
+        duplicates = (
+            validation.get("duplicates")
+            or {}
+        )
 
         if isinstance(duplicates, dict):
+
             fraction = _normalize_number(
                 duplicates.get("fraction")
             )
 
             if fraction is not None:
-                _add_known(known, fraction * 100)
+                _add_known(
+                    known,
+                    fraction * 100,
+                )
 
     # ------------------------------------------------------------------
     # Order-level metrics
     # ------------------------------------------------------------------
 
-    by_order = kpi_results.get("by_order") or []
+    by_order = (
+        kpi_results.get("by_order")
+        or []
+    )
 
     primary_orders = [
         order
         for order in by_order
-        if isinstance(order, dict)
-        and not order.get("is_supplementary")
-        and not order.get("is_non_order_material")
+        if (
+            isinstance(order, dict)
+            and not order.get("is_supplementary")
+            and not order.get("is_non_order_material")
+        )
     ]
 
-    _add_known(known, len(primary_orders))
+    # Total analyzed orders
+    total_orders = len(primary_orders)
+
+    _add_known(
+        known,
+        total_orders,
+    )
+
+    # ------------------------------------------------------------------
+    # Fulfillment distribution
+    #
+    # MUST exactly mirror analysis_agent._distribution_summary()
+    # ------------------------------------------------------------------
 
     fulfillment_values = [
-        _normalize_number(order.get("fulfillment_pct"))
+        _normalize_number(
+            order.get("fulfillment_pct")
+        )
         for order in primary_orders
     ]
 
@@ -237,43 +356,139 @@ def _collect_known_values(state: FibrionState) -> set[float]:
     ]
 
     if fulfillment_values:
-        target_count = sum(
-            1 for value in fulfillment_values
-            if 90 <= value < 110
-        )
 
-        low_count = sum(
-            1 for value in fulfillment_values
+        bucket_0_10 = sum(
+            1
+            for value in fulfillment_values
             if value < 10
         )
 
-        extreme_count = sum(
-            1 for value in fulfillment_values
+        bucket_10_90 = sum(
+            1
+            for value in fulfillment_values
+            if 10 <= value < 90
+        )
+
+        bucket_90_110 = sum(
+            1
+            for value in fulfillment_values
+            if 90 <= value < 110
+        )
+
+        bucket_110_200 = sum(
+            1
+            for value in fulfillment_values
+            if 110 <= value < 200
+        )
+
+        bucket_200_plus = sum(
+            1
+            for value in fulfillment_values
             if value >= 200
         )
 
+        # Add EVERY distribution bucket count.
+        for count in (
+            bucket_0_10,
+            bucket_10_90,
+            bucket_90_110,
+            bucket_110_200,
+            bucket_200_plus,
+        ):
+            _add_known(
+                known,
+                count,
+            )
+
+        # Distribution percentages if the analysis chooses
+        # to express a bucket as a percentage.
+        total = len(fulfillment_values)
+
+        if total:
+            for count in (
+                bucket_0_10,
+                bucket_10_90,
+                bucket_90_110,
+                bucket_110_200,
+                bucket_200_plus,
+            ):
+                _add_known(
+                    known,
+                    count / total * 100,
+                )
+
+        # Explicitly calculated metrics already used by the
+        # previous verifier implementation.
+        _add_known(
+            known,
+            bucket_90_110,
+        )
+
+        _add_known(
+            known,
+            bucket_0_10,
+        )
+
+        # Fully rejected orders
         fully_rejected_count = sum(
             1
             for order in primary_orders
-            if _normalize_number(order.get("rejection_pct")) == 100
-        )
-
-        _add_known(known, target_count)
-        _add_known(known, low_count)
-        _add_known(known, extreme_count)
-        _add_known(known, fully_rejected_count)
-
-        _add_known(
-            known,
-            target_count / len(fulfillment_values) * 100,
+            if (
+                _normalize_number(
+                    order.get("rejection_pct")
+                ) == 100
+            )
         )
 
         _add_known(
             known,
-            low_count / len(fulfillment_values) * 100,
+            fully_rejected_count,
         )
 
     return known
+
+# ---------------------------------------------------------------------------
+# Text preprocessing
+# ---------------------------------------------------------------------------
+
+def _prepare_numeric_text(text: str) -> str:
+    """
+    Prepare report prose for numeric verification.
+
+    Removes:
+      1. order IDs
+      2. numeric ranges
+
+    Numeric ranges are removed because expressions such as:
+
+        90-110%
+        0-10%
+
+    are analytical ranges, not negative numbers.
+
+    This function deliberately does NOT remove standalone negative
+    numbers such as:
+
+        -10
+        -10.5
+        -3%
+
+    Those remain eligible for grounding.
+    """
+    if not text:
+        return ""
+
+    cleaned = _ORDER_ID_PATTERN.sub(
+        " ",
+        text,
+    )
+
+    cleaned = _RANGE_PATTERN.sub(
+        " ",
+        cleaned,
+    )
+
+    return cleaned
 
 
 # ---------------------------------------------------------------------------
@@ -284,13 +499,12 @@ def _extract_numeric_values(text: str) -> list[float]:
     """
     Extract numeric values from prose.
 
-    Order IDs and numbers embedded inside technical identifiers are
-    removed before extraction.
+    Order IDs and numeric ranges are removed before extraction.
     """
     if not text:
         return []
 
-    cleaned = _ORDER_ID_PATTERN.sub(" ", text)
+    cleaned = _prepare_numeric_text(text)
 
     values: list[float] = []
 
@@ -300,13 +514,19 @@ def _extract_numeric_values(text: str) -> list[float]:
 
     scaled_spans: list[tuple[int, int]] = []
 
-    for match in _SCALED_NUMBER_PATTERN.finditer(cleaned):
-        raw_value = _normalize_number(match.group("value"))
+    for match in _SCALED_NUMBER_PATTERN.finditer(
+        cleaned
+    ):
+        raw_value = _normalize_number(
+            match.group("value")
+        )
 
         if raw_value is None:
             continue
 
-        scale = match.group("scale").lower()
+        scale = match.group(
+            "scale"
+        ).lower()
 
         multiplier = {
             "thousand": 1_000,
@@ -319,9 +539,13 @@ def _extract_numeric_values(text: str) -> list[float]:
 
         if multiplier:
             values.append(raw_value)
-            values.append(raw_value * multiplier)
+            values.append(
+                raw_value * multiplier
+            )
 
-        scaled_spans.append(match.span())
+        scaled_spans.append(
+            match.span()
+        )
 
     # --------------------------------------------------------------
     # Extract percentages.
@@ -329,36 +553,50 @@ def _extract_numeric_values(text: str) -> list[float]:
 
     percent_spans: list[tuple[int, int]] = []
 
-    for match in _PERCENT_PATTERN.finditer(cleaned):
-        value = _normalize_number(match.group("value"))
+    for match in _PERCENT_PATTERN.finditer(
+        cleaned
+    ):
+        value = _normalize_number(
+            match.group("value")
+        )
 
         if value is not None:
             values.append(value)
 
-        percent_spans.append(match.span())
+        percent_spans.append(
+            match.span()
+        )
 
     # --------------------------------------------------------------
     # Extract ordinary numbers.
     # --------------------------------------------------------------
 
-    for match in _NUMBER_PATTERN.finditer(cleaned):
+    for match in _NUMBER_PATTERN.finditer(
+        cleaned
+    ):
         start, end = match.span()
 
-        # Don't duplicate numbers already consumed as scaled values.
+        # Don't duplicate numbers already consumed
+        # as scaled values.
         if any(
             span_start <= start < span_end
-            for span_start, span_end in scaled_spans
+            for span_start, span_end
+            in scaled_spans
         ):
             continue
 
-        # Don't duplicate numbers already consumed as percentages.
+        # Don't duplicate numbers already consumed
+        # as percentages.
         if any(
             span_start <= start < span_end
-            for span_start, span_end in percent_spans
+            for span_start, span_end
+            in percent_spans
         ):
             continue
 
-        value = _normalize_number(match.group(0))
+        value = _normalize_number(
+            match.group(0)
+        )
 
         if value is not None:
             values.append(value)
@@ -376,30 +614,29 @@ def _numbers_match(
     tolerance: float = 0.05,
 ) -> bool:
     """
-    Determine whether a cited value maps to a real computed value.
+    Match a reported number to a computed pipeline value.
 
     Uses:
-      - exact-ish matching for normal values
+      - absolute tolerance for small values
       - small relative tolerance for large values
-
-    The previous implementation allowed a 1% tolerance for everything,
-    which was far too permissive for values in the millions.
     """
-    for known_value in known:
-        difference = abs(value - known_value)
 
-        # Small absolute tolerance for rounded prose.
-        if difference <= tolerance:
+    for kv in known:
+
+        diff = abs(
+            value - kv
+        )
+
+        # Absolute tolerance for small numbers.
+        if diff <= tolerance:
             return True
 
-        # Controlled relative tolerance for very large numbers.
-        if abs(known_value) >= 10_000:
-            relative_tolerance = max(
+        # Relative tolerance for large values.
+        if abs(kv) >= 10000:
+            if diff <= max(
                 1.0,
-                abs(known_value) * 0.0005,  # 0.05%
-            )
-
-            if difference <= relative_tolerance:
+                abs(kv) * 0.0005,
+            ):
                 return True
 
     return False
@@ -410,23 +647,30 @@ def _check_numeric_grounding(
     known: set[float],
 ) -> list[str]:
     """
-    Return numeric values appearing in prose that cannot be traced
-    to known computed values.
+    Verify reported numeric values against the pipeline's
+    computed values.
+
+    Returns numeric tokens that cannot be grounded.
+
+    Numeric ranges such as:
+        0-10%
+        90-110%
+
+    are ignored as ranges.
     """
+
     if not text:
         return []
 
+    cleaned = _prepare_numeric_text(
+        text
+    )
+
     suspicious: list[str] = []
 
-    # Remove order IDs before extracting numbers.
-    cleaned = _ORDER_ID_PATTERN.sub(" ", text)
-
-    # ------------------------------------------------------------------
-    # Important reporting constants.
-    #
-    # These are business thresholds, not computed KPIs.
-    # Keep them separate from known_values.
-    # ------------------------------------------------------------------
+    # --------------------------------------------------------------
+    # Allowed analytical constants.
+    # --------------------------------------------------------------
 
     allowed_constants = {
         10.0,
@@ -436,72 +680,155 @@ def _check_numeric_grounding(
         200.0,
     }
 
-    # ------------------------------------------------------------------
-    # Extract tokens directly so we can report the original text.
-    # ------------------------------------------------------------------
+    # --------------------------------------------------------------
+    # Mark scaled and percentage spans so ordinary-number
+    # extraction does not duplicate them.
+    # --------------------------------------------------------------
 
-    tokens = _NUMBER_PATTERN.findall(cleaned)
+    skip_spans: list[
+        tuple[int, int]
+    ] = []
 
-    for token in tokens:
-        value = _normalize_number(token)
+    for match in _SCALED_NUMBER_PATTERN.finditer(
+        cleaned
+    ):
+        skip_spans.append(
+            match.span()
+        )
+
+    for match in _PERCENT_PATTERN.finditer(
+        cleaned
+    ):
+        skip_spans.append(
+            match.span()
+        )
+
+    # --------------------------------------------------------------
+    # Check ordinary numeric tokens.
+    # --------------------------------------------------------------
+
+    for match in _NUMBER_PATTERN.finditer(
+        cleaned
+    ):
+        start, end = match.span()
+
+        if any(
+            span_start <= start < span_end
+            for span_start, span_end
+            in skip_spans
+        ):
+            continue
+
+        token = match.group(0)
+
+        value = _normalize_number(
+            token
+        )
 
         if value is None:
             continue
 
-        # Tiny numbers are generally list markers / noise.
+        # Ignore trivial numeric fragments.
         if abs(value) < 1:
             continue
 
         if value in allowed_constants:
             continue
 
-        if not _numbers_match(value, known):
-            suspicious.append(token)
+        if not _numbers_match(
+            value,
+            known,
+        ):
+            suspicious.append(
+                token
+            )
 
-    # ------------------------------------------------------------------
-    # Check scaled values.
-    #
-    # Example:
-    #   "3.76 million yards"
-    #
-    # The raw token "3.76" alone may not exist in known values, but
-    # 3.76 million can map to the actual shortfall.
-    # ------------------------------------------------------------------
+    # --------------------------------------------------------------
+    # Check percentages explicitly.
+    # --------------------------------------------------------------
 
-    for match in _SCALED_NUMBER_PATTERN.finditer(cleaned):
-        raw_value = _normalize_number(match.group("value"))
+    for match in _PERCENT_PATTERN.finditer(
+        cleaned
+    ):
+        raw = match.group(
+            "value"
+        )
 
-        if raw_value is None:
+        value = _normalize_number(
+            raw
+        )
+
+        if value is None:
             continue
 
-        scale = match.group("scale").lower()
+        if abs(value) < 1:
+            continue
+
+        if value in allowed_constants:
+            continue
+
+        if not _numbers_match(
+            value,
+            known,
+        ):
+            suspicious.append(
+                match.group(0)
+            )
+
+    # --------------------------------------------------------------
+    # Check scaled numbers explicitly.
+    # --------------------------------------------------------------
+
+    for match in _SCALED_NUMBER_PATTERN.finditer(
+        cleaned
+    ):
+        raw = _normalize_number(
+            match.group("value")
+        )
+
+        if raw is None:
+            continue
+
+        scale = match.group(
+            "scale"
+        ).lower()
 
         multiplier = {
-            "thousand": 1_000,
-            "k": 1_000,
-            "million": 1_000_000,
-            "m": 1_000_000,
-            "billion": 1_000_000_000,
-            "bn": 1_000_000_000,
-        }.get(scale)
+            "thousand": 1e3,
+            "k": 1e3,
+            "million": 1e6,
+            "m": 1e6,
+            "billion": 1e9,
+            "bn": 1e9,
+        }[scale]
 
-        if multiplier is None:
-            continue
+        actual = (
+            raw * multiplier
+        )
 
-        actual_value = raw_value * multiplier
+        if not _numbers_match(
+            actual,
+            known,
+        ):
+            suspicious.append(
+                match.group(0)
+            )
 
-        if not _numbers_match(actual_value, known):
-            suspicious.append(match.group(0))
-
-    # Preserve order while removing duplicates.
-    return list(dict.fromkeys(suspicious))
+    return list(
+        dict.fromkeys(
+            suspicious
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
 # Structural verification
 # ---------------------------------------------------------------------------
 
-def _check_structural(state: FibrionState) -> list[str]:
+def _check_structural(
+    state: FibrionState,
+) -> list[str]:
+
     issues: list[str] = []
 
     # --------------------------------------------------------------
@@ -509,52 +836,72 @@ def _check_structural(state: FibrionState) -> list[str]:
     # --------------------------------------------------------------
 
     if not state.report_path:
-        issues.append("Report PDF path is missing")
+        issues.append(
+            "Report PDF path is missing"
+        )
 
     else:
-        report_path = Path(state.report_path)
+        report_path = Path(
+            state.report_path
+        )
 
         if not report_path.exists():
             issues.append(
-                f"Report PDF file does not exist: {report_path}"
+                "Report PDF file does not exist: "
+                f"{report_path}"
             )
 
         elif not report_path.is_file():
             issues.append(
-                f"Report path is not a file: {report_path}"
+                "Report path is not a file: "
+                f"{report_path}"
             )
 
         elif report_path.stat().st_size < 1000:
             issues.append(
-                "Report PDF file is suspiciously small - "
-                "likely empty or malformed"
+                "Report PDF file is suspiciously "
+                "small - likely empty or malformed"
             )
 
     # --------------------------------------------------------------
     # Charts
     # --------------------------------------------------------------
 
-    for chart_path in state.chart_paths or []:
-        path = Path(chart_path)
+    for chart_path in (
+        state.chart_paths or []
+    ):
+        path = Path(
+            chart_path
+        )
 
         if not path.exists():
-            issues.append(f"Chart file missing: {path}")
+            issues.append(
+                f"Chart file missing: {path}"
+            )
 
         elif not path.is_file():
-            issues.append(f"Chart path is not a file: {path}")
+            issues.append(
+                f"Chart path is not a file: {path}"
+            )
 
         elif path.stat().st_size == 0:
-            issues.append(f"Chart file is empty: {path}")
+            issues.append(
+                f"Chart file is empty: {path}"
+            )
 
     # --------------------------------------------------------------
     # Required analysis sections
     # --------------------------------------------------------------
 
     if not state.analysis_executive_summary:
-        issues.append("Report is missing its executive summary")
+        issues.append(
+            "Report is missing its executive summary"
+        )
 
     if not state.analysis_key_findings:
-        issues.append("Report is missing its key findings")
+        issues.append(
+            "Report is missing its key findings"
+        )
 
     return issues
 
@@ -566,16 +913,17 @@ def _check_structural(state: FibrionState) -> list[str]:
 class ReadabilityCheck(BaseModel):
     reads_professionally: bool = Field(
         description=(
-            "False only when the text contains raw technical field names, "
-            "placeholder text, malformed/incomplete sentences, or genuine "
+            "False only when the text contains raw "
+            "technical field names, placeholder text, "
+            "malformed/incomplete sentences, or genuine "
             "redundancy within one section."
         )
     )
 
     issues: list[str] = Field(
         description=(
-            "Specific readability problems. Empty list when no problems "
-            "are found."
+            "Specific readability problems. Empty list "
+            "when no problems are found."
         )
     )
 
@@ -583,6 +931,7 @@ class ReadabilityCheck(BaseModel):
 def _check_readability(
     state: FibrionState,
 ) -> tuple[bool, list[str], dict]:
+
     combined = "\n".join(
         filter(
             None,
@@ -640,42 +989,65 @@ REPORT TEXT:
             "Readability check failed; treating as pass: %s",
             meta,
         )
+
         return True, [], meta
 
     issues = result.issues or []
 
-    # If the model says the text is not professional but gives no reason,
-    # preserve a useful verification failure message.
-    if not result.reads_professionally and not issues:
-        issues = ["LLM readability check found an unspecified prose issue"]
+    if (
+        not result.reads_professionally
+        and not issues
+    ):
+        issues = [
+            "LLM readability check found "
+            "an unspecified prose issue"
+        ]
 
-    return result.reads_professionally, issues, meta
+    return (
+        result.reads_professionally,
+        issues,
+        meta,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Main verification agent
 # ---------------------------------------------------------------------------
 
-def run_verification(state: FibrionState) -> dict:
-    run_id_ctx.set(state.run_id)
+def run_verification(
+    state: FibrionState,
+) -> dict:
 
-    if state.error or not state.report_path:
+    run_id_ctx.set(
+        state.run_id
+    )
+
+    if (
+        state.error
+        or not state.report_path
+    ):
         logger.warning(
-            "Skipping verification - no report available"
+            "Skipping verification - "
+            "no report available"
         )
+
         return {}
 
     # --------------------------------------------------------------
     # 1. Deterministic structural checks
     # --------------------------------------------------------------
 
-    structural_issues = _check_structural(state)
+    structural_issues = (
+        _check_structural(state)
+    )
 
     # --------------------------------------------------------------
     # 2. Deterministic numeric grounding
     # --------------------------------------------------------------
 
-    known_values = _collect_known_values(state)
+    known_values = (
+        _collect_known_values(state)
+    )
 
     numeric_issues: list[str] = []
 
@@ -687,6 +1059,7 @@ def run_verification(state: FibrionState) -> dict:
     ]
 
     for text in analysis_sections:
+
         if not text:
             continue
 
@@ -698,15 +1071,20 @@ def run_verification(state: FibrionState) -> dict:
         if suspicious:
             numeric_issues.append(
                 "Ungrounded numbers "
-                f"{suspicious} in: '{text[:120]}...'"
+                f"{suspicious} in: "
+                f"'{text[:120]}...'"
             )
 
     # --------------------------------------------------------------
     # 3. LLM readability check
     # --------------------------------------------------------------
 
-    reads_well, readability_issues, readability_meta = (
-        _check_readability(state)
+    (
+        reads_well,
+        readability_issues,
+        readability_meta,
+    ) = _check_readability(
+        state
     )
 
     llm_calls = [
@@ -717,68 +1095,54 @@ def run_verification(state: FibrionState) -> dict:
         },
     ]
 
-    # --------------------------------------------------------------
-    # Final result
-    # --------------------------------------------------------------
+    # Only deterministic checks are delivery-blocking.
+    #
+    # The LLM readability check is advisory. It must never cause
+    # regeneration of an otherwise valid report because wording such
+    # as "most", "roughly", etc. is a subjective language judgment.
 
-    all_issues = (
+    blocking_issues = (
         numeric_issues
         + structural_issues
-        + readability_issues
     )
 
-    passed = not all_issues and reads_well
+    advisory_issues = readability_issues
+
+    passed = not blocking_issues
 
     if passed:
-        logger.info("Verification passed")
+        if advisory_issues:
+            logger.warning(
+                "Verification passed with advisory readability issues: %s",
+                advisory_issues,
+            )
+        else:
+            logger.info("Verification passed")
 
         return {
             "verification_passed": True,
             "verification_issues": [],
+            "verification_advisory_issues": advisory_issues,
             "llm_calls": llm_calls,
         }
+
+    # --------------------------------------------------------------
+    # Verification failure is NON-RETRYABLE.
+    #
+    # The report has already been generated. Do not regenerate
+    # analysis, charts, or the report. Record the issues for
+    # debugging and continue to notification.
+    # --------------------------------------------------------------
 
     logger.warning(
-        "Verification found issues: %s",
-        all_issues,
-    )
-
-    # --------------------------------------------------------------
-    # Allow exactly one verification-triggered retry.
-    #
-    # This uses the existing retry_count for compatibility with your
-    # current state model.
-    # --------------------------------------------------------------
-
-    retry_count = getattr(state, "retry_count", 0) or 0
-
-    if retry_count == 0:
-        logger.info(
-            "Verification failed - requesting one analysis retry"
-        )
-
-        return {
-            "verification_passed": False,
-            "verification_issues": all_issues,
-            "retry_count": 1,
-            "llm_calls": llm_calls,
-        }
-
-    # --------------------------------------------------------------
-    # Retry already consumed.
-    # --------------------------------------------------------------
-
-    logger.error(
-        "Verification failed after retry: %s",
-        all_issues,
+        "Verification FAILED - report retained without regeneration: %s",
+        blocking_issues,
     )
 
     return {
         "verification_passed": False,
-        "verification_issues": all_issues,
-        "error": {
-            "type": "verification_failed_after_retry",
-            "issues": all_issues,
-        },
+        "verification_issues": blocking_issues,
+        "verification_advisory_issues": advisory_issues,
+        "verification_retry_requested": False,
         "llm_calls": llm_calls,
     }

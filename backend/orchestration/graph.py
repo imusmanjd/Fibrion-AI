@@ -128,33 +128,29 @@ def _tracked_node(
     name: str,
     fn: Callable[[FibrionState], dict[str, Any]],
 ) -> Callable[[FibrionState], dict[str, Any]]:
-    """
-    Wrap an existing Fibrion agent without changing its implementation.
-
-    Before the agent runs, the frontend sees the agent as active.
-    After it finishes, the frontend receives a completion message.
-
-    The actual agent output remains untouched.
-    """
 
     def wrapped(state: FibrionState) -> dict[str, Any]:
         _set_stage(state, name)
 
-        result = fn(state)
+        result = fn(state) or {}
 
         run_id = getattr(state, "run_id", None)
 
         if run_id:
             stage_info = STAGES.get(name, {})
 
-            if state.error:
+            node_error = result.get("error")
+
+            if node_error:
                 run_store.update(
                     run_id,
                     status="running",
                     stage=name,
+                    progress=stage_info.get("progress", 0),
                     message=(
-                        f"{name.replace('_', ' ').title()} completed "
-                        "with an error; Fibrion is routing the run."
+                        f"{name.replace('_', ' ').title()} "
+                        "encountered an error. "
+                        "Fibrion is stopping this analysis."
                     ),
                 )
             else:
@@ -173,10 +169,10 @@ def _tracked_node(
 
     return wrapped
 
-
 # -------------------------------------------------------------------
 # Routing
 # -------------------------------------------------------------------
+
 
 def _after_ingestion(state: FibrionState) -> str:
     return "notification" if state.error else "validation"
@@ -185,22 +181,18 @@ def _after_ingestion(state: FibrionState) -> str:
 def _after_validation(state: FibrionState) -> str:
     return "notification" if state.error else "kpi"
 
+def _after_kpi(state: FibrionState) -> str:
+    return "notification" if state.error else "analysis"
 
 def _after_verification(state: FibrionState) -> str:
     """
-    Verification controls whether the pipeline completes or gets
-    one analysis retry.
+    Verification is a final quality check.
 
-    verification_agent increments retry_count when it requests a
-    retry, so retry_count == 0 means this is the first failed pass.
+    It never triggers regeneration.
+    Whether verification passes or fails, the generated
+    artifacts are preserved and the pipeline proceeds to
+    notification.
     """
-
-    if state.verification_passed:
-        return "notification"
-
-    if state.retry_count == 0:
-        return "analysis"
-
     return "notification"
 
 
@@ -279,33 +271,33 @@ def build_graph():
         },
     )
 
-    graph.add_edge(
-        "kpi",
-        "analysis",
-    )
-
-    graph.add_edge(
-        "analysis",
-        "visualization",
-    )
-
-    graph.add_edge(
-        "visualization",
-        "report",
-    )
-
-    graph.add_edge(
-        "report",
-        "verification",
-    )
-
     graph.add_conditional_edges(
+    "kpi",
+    _after_kpi,
+    {
+        "analysis": "analysis",
+        "notification": "notification",
+    },
+    )
+    
+    graph.add_edge(
+        "analysis",
+        "visualization",
+    )
+
+    graph.add_edge(
+        "visualization",
+        "report",
+    )
+
+    graph.add_edge(
+        "report",
         "verification",
-        _after_verification,
-        {
-            "analysis": "analysis",
-            "notification": "notification",
-        },
+    )
+
+    graph.add_edge(
+    "verification",
+    "notification",
     )
 
     graph.add_edge(
