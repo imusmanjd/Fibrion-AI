@@ -3,8 +3,8 @@ import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
-  title: "Fibrion AI",
-  description: "Industrial production intelligence for manufacturing teams.",
+  title: "Fibrion",
+  description: "Industrial production intelligence and analytics.",
 };
 
 export default function RootLayout({
