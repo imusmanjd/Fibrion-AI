@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 type NavItem = {
   href: string;
@@ -42,53 +43,6 @@ function UploadIcon() {
         d="M4 11.5v3.25A1.75 1.75 0 0 0 5.75 16.5h8.5A1.75 1.75 0 0 0 16 14.75V11.5"
         stroke="currentColor"
         strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function DatabaseIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <ellipse
-        cx="10"
-        cy="4.5"
-        rx="6"
-        ry="2.5"
-        stroke="currentColor"
-      />
-      <path
-        d="M4 4.5v5c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5v-5"
-        stroke="currentColor"
-      />
-      <path
-        d="M4 9.5v5c0 1.38 2.69 2.5 6 2.5s6-1.12 6-2.5v-5"
-        stroke="currentColor"
-      />
-    </svg>
-  );
-}
-
-function ReportIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M5 2.75h6.5L15.5 6.7v10.55H5V2.75Z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M11.5 2.75V7h4"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7.5 10h5M7.5 13h5"
-        stroke="currentColor"
-        strokeWidth="1.4"
         strokeLinecap="round"
       />
     </svg>
@@ -144,18 +98,6 @@ const navItems: NavItem[] = [
     description: "Run a new analysis",
     icon: <UploadIcon />,
   },
-  {
-    href: "/datasets",
-    label: "Datasets",
-    description: "Production data",
-    icon: <DatabaseIcon />,
-  },
-  {
-    href: "/reports",
-    label: "Reports",
-    description: "Generated reports",
-    icon: <ReportIcon />,
-  },
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -180,22 +122,6 @@ function getPageContext(pathname: string) {
       section: "Workspace",
       title: "Analyze",
       description: "Run a production data analysis",
-    };
-  }
-
-  if (pathname === "/datasets" || pathname.startsWith("/datasets/")) {
-    return {
-      section: "Workspace",
-      title: "Datasets",
-      description: "Production datasets and source data",
-    };
-  }
-
-  if (pathname === "/reports" || pathname.startsWith("/reports/")) {
-    return {
-      section: "Workspace",
-      title: "Reports",
-      description: "Analysis reports and outputs",
     };
   }
 
@@ -386,6 +312,7 @@ export function AppShell({
               <span className="header-system-dot" />
               <span>Operational</span>
             </div>
+            <ThemeToggle />
           </div>
         </header>
 

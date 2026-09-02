@@ -60,8 +60,18 @@ const workflow = [
   },
   {
     number: "06",
+    title: "Report",
+    description: "Assemble a management-ready production report.",
+  },
+  {
+    number: "07",
     title: "Verify",
     description: "Check generated outputs before delivery.",
+  },
+  {
+    number: "08",
+    title: "Deliver",
+    description: "Download or send the verified report.",
   },
 ];
 
@@ -214,7 +224,7 @@ export default function OverviewPage() {
 
           <p>
             Upload a production dataset,
-            choose the relevant process,
+            run the weaving workflow,
             and let Fibrion run the complete
             analytical workflow. Deterministic
             calculations handle the numbers;
