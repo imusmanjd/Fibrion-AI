@@ -145,7 +145,12 @@ export default function AnalyzePage() {
         );
       }
 
-      router.push(`/analysis/${runId}`);
+      window.sessionStorage.setItem(
+      "fibrion:lastRunId",
+      runId,
+    );
+
+    router.push(`/analysis/${runId}`);
     } catch (err) {
       setError(
         err instanceof Error

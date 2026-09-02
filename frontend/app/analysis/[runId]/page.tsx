@@ -1,102 +1,128 @@
 "use client";
 
-import {
-  Activity,
-  ArrowLeft,
-  Check,
-  Circle,
-  Clock3,
-  Database,
-  FileBarChart3,
-  FileCheck2,
-  FileOutput,
-  Loader2,
-  ShieldCheck,
-  Sparkles,
-  X,
-  AlertTriangle,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+
+import "./run.css";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "http://127.0.0.1:8000";
 
-type RunStatus = {
-  run_id?: string;
-  status?: string;
-  stage?: string;
-  process_type?: string;
-  filename?: string;
-  error?: string | null;
-  created_at?: string;
-  completed_at?: string;
+type RunResult = {
+  report_path?: string | null;
+  chart_paths?: string[];
   [key: string]: unknown;
 };
 
-const STAGES = [
+type RunData = {
+  run_id?: string;
+  filename?: string;
+  process_type?: string;
+  status?: string;
+  stage?: string;
+  progress?: number;
+  message?: string;
+  error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  completed_at?: string;
+  result?: RunResult | null;
+};
+
+type Stage = {
+  key: string;
+  label: string;
+  description: string;
+};
+
+const STAGES: Stage[] = [
   {
     key: "ingestion",
     label: "Ingestion",
-    description: "Reading and normalizing production data",
-    icon: Database,
+    description: "Reading and structuring the dataset",
   },
   {
     key: "validation",
     label: "Validation",
-    description: "Checking dataset structure and quality",
-    icon: FileCheck2,
+    description: "Checking schema, values, and data integrity",
   },
   {
     key: "kpi",
     label: "KPI computation",
-    description: "Calculating production performance metrics",
-    icon: Activity,
+    description: "Calculating production and quality metrics",
   },
   {
     key: "analysis",
     label: "Analysis",
     description: "Generating operational findings",
-    icon: Sparkles,
   },
   {
     key: "visualization",
     label: "Visualization",
-    description: "Building analytical visualizations",
-    icon: FileBarChart3,
+    description: "Preparing analytical charts",
   },
   {
     key: "report",
-    label: "Report",
-    description: "Assembling the management report",
-    icon: FileOutput,
+    label: "Report generation",
+    description: "Building the production intelligence report",
   },
   {
     key: "verification",
     label: "Verification",
-    description: "Checking outputs before delivery",
-    icon: ShieldCheck,
+    description: "Checking generated outputs",
   },
 ];
 
 function normalizeStage(value?: string) {
-  if (!value) return "";
+  if (!value) {
+    return "queued";
+  }
 
-  return value
+  const normalized = value
     .toLowerCase()
-    .replace(/[\s-]+/g, "_")
-    .replace("kpi_computation", "kpi")
-    .replace("kpi_computing", "kpi")
-    .replace("visualisation", "visualization");
+    .trim()
+    .replace(/[\s-]+/g, "_");
+
+  if (
+    normalized === "kpi_computation" ||
+    normalized === "kpi_computing"
+  ) {
+    return "kpi";
+  }
+
+  if (normalized === "visualisation") {
+    return "visualization";
+  }
+
+  if (
+    normalized === "completed" ||
+    normalized === "complete" ||
+    normalized === "done"
+  ) {
+    return "complete";
+  }
+
+  if (
+    normalized === "failed" ||
+    normalized === "error"
+  ) {
+    return "error";
+  }
+
+  return normalized;
 }
 
-function stageIndex(stage?: string) {
+function getStageIndex(stage?: string) {
   const normalized = normalizeStage(stage);
 
-  return STAGES.findIndex((item) => item.key === normalized);
+  return STAGES.findIndex(
+    (item) => item.key === normalized,
+  );
 }
 
-function isSuccessful(status?: string) {
+function isCompleted(status?: string) {
   const value = status?.toLowerCase();
 
   return (
@@ -108,7 +134,10 @@ function isSuccessful(status?: string) {
   );
 }
 
-function isFailed(status?: string, error?: string | null) {
+function isFailed(
+  status?: string,
+  error?: string | null,
+) {
   const value = status?.toLowerCase();
 
   return (
@@ -118,20 +147,61 @@ function isFailed(status?: string, error?: string | null) {
   );
 }
 
-function formatElapsed(start?: string, end?: string) {
-  if (!start) return "—";
+function formatProcess(value?: string) {
+  if (!value) {
+    return "—";
+  }
 
-  const started = new Date(start).getTime();
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(
+      /\b\w/g,
+      (letter) => letter.toUpperCase(),
+    );
+}
 
-  if (Number.isNaN(started)) return "—";
+function formatDate(value?: string) {
+  if (!value) {
+    return "—";
+  }
 
-  const finished = end
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function formatDuration(
+  start?: string,
+  end?: string,
+) {
+  if (!start) {
+    return "—";
+  }
+
+  const startTime = new Date(start).getTime();
+
+  if (Number.isNaN(startTime)) {
+    return "—";
+  }
+
+  const endTime = end
     ? new Date(end).getTime()
     : Date.now();
 
+  if (Number.isNaN(endTime)) {
+    return "—";
+  }
+
   const seconds = Math.max(
     0,
-    Math.floor((finished - started) / 1000),
+    Math.floor((endTime - startTime) / 1000),
   );
 
   if (seconds < 60) {
@@ -144,17 +214,125 @@ function formatElapsed(start?: string, end?: string) {
   return `${minutes}m ${remainder}s`;
 }
 
-function formatDate(value?: string) {
-  if (!value) return "—";
+function Icon({
+  name,
+  size = 18,
+}: {
+  name:
+    | "database"
+    | "check"
+    | "file"
+    | "chart"
+    | "shield"
+    | "download"
+    | "arrow"
+    | "clock"
+    | "alert"
+    | "refresh";
+  size?: number;
+}) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.7,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
 
-  const date = new Date(value);
+  switch (name) {
+    case "database":
+      return (
+        <svg {...common}>
+          <ellipse cx="12" cy="5" rx="8" ry="3" />
+          <path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+          <path d="M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" />
+        </svg>
+      );
 
-  if (Number.isNaN(date.getTime())) return "—";
+    case "check":
+      return (
+        <svg {...common}>
+          <path d="m5 12 4 4L19 6" />
+        </svg>
+      );
 
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+    case "file":
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6" />
+          <path d="M8 13h8M8 17h5" />
+        </svg>
+      );
+
+    case "chart":
+      return (
+        <svg {...common}>
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="m7 15 3-4 3 2 5-7" />
+        </svg>
+      );
+
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 3 20 6v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6z" />
+          <path d="m8.5 12 2.3 2.3 4.7-5" />
+        </svg>
+      );
+
+    case "download":
+      return (
+        <svg {...common}>
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 21h14" />
+        </svg>
+      );
+
+    case "arrow":
+      return (
+        <svg {...common}>
+          <path d="M5 12h14" />
+          <path d="m13 6 6 6-6 6" />
+        </svg>
+      );
+
+    case "clock":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      );
+
+    case "alert":
+      return (
+        <svg {...common}>
+          <path d="M12 3 2.8 20h18.4z" />
+          <path d="M12 9v5" />
+          <path d="M12 17h.01" />
+        </svg>
+      );
+
+    case "refresh":
+      return (
+        <svg {...common}>
+          <path d="M20 11a8 8 0 0 0-14.7-4L3 10" />
+          <path d="M3 5v5h5" />
+          <path d="M4 13a8 8 0 0 0 14.7 4L21 14" />
+          <path d="M21 19v-5h-5" />
+        </svg>
+      );
+
+    default:
+      return null;
+  }
 }
 
 export default function AnalysisRunPage() {
@@ -163,19 +341,30 @@ export default function AnalysisRunPage() {
 
   const runId = String(params.runId);
 
-  const [run, setRun] = useState<RunStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [requestError, setRequestError] = useState("");
-  const [now, setNow] = useState(Date.now());
+  const [run, setRun] =
+    useState<RunData | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [requestError, setRequestError] =
+    useState("");
+
+  const [now, setNow] =
+    useState(Date.now());
 
   useEffect(() => {
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timeout:
+      | ReturnType<typeof setTimeout>
+      | undefined;
 
-    async function fetchRun() {
+    async function loadRun() {
       try {
         const response = await fetch(
-          `${API_URL}/runs/${encodeURIComponent(runId)}`,
+          `${API_URL}/runs/${encodeURIComponent(
+            runId,
+          )}`,
           {
             cache: "no-store",
           },
@@ -183,106 +372,142 @@ export default function AnalysisRunPage() {
 
         if (!response.ok) {
           throw new Error(
-            `Unable to retrieve run status (${response.status}).`,
+            `Unable to load analysis run (${response.status}).`,
           );
         }
 
-        const data = await response.json();
+        const data =
+          (await response.json()) as RunData;
 
-        if (!cancelled) {
-          setRun(data);
-          setRequestError("");
-          setLoading(false);
+        if (cancelled) {
+          return;
         }
+
+        setRun(data);
+        setLoading(false);
+        setRequestError("");
 
         const finished =
-          isSuccessful(data?.status) ||
-          isFailed(data?.status, data?.error);
+          isCompleted(data.status) ||
+          isFailed(
+            data.status,
+            data.error,
+          );
 
-        if (!finished && !cancelled) {
-          timer = setTimeout(fetchRun, 1200);
+        if (!finished) {
+          timeout = setTimeout(
+            loadRun,
+            1200,
+          );
         }
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
         setRequestError(
           error instanceof Error
             ? error.message
-            : "Unable to retrieve run status.",
+            : "Unable to load the analysis run.",
         );
 
         setLoading(false);
 
-        timer = setTimeout(fetchRun, 2500);
+        timeout = setTimeout(
+          loadRun,
+          2500,
+        );
       }
     }
 
-    fetchRun();
+    void loadRun();
 
     return () => {
       cancelled = true;
 
-      if (timer) {
-        clearTimeout(timer);
+      if (timeout) {
+        clearTimeout(timeout);
       }
     };
   }, [runId]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
+    const interval =
+      window.setInterval(() => {
+        setNow(Date.now());
+      }, 1000);
 
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(interval);
+    };
   }, []);
 
-  const currentIndex = useMemo(
-    () => stageIndex(run?.stage),
-    [run?.stage],
+  useEffect(() => {
+    window.sessionStorage.setItem(
+      "fibrion:lastRunId",
+      runId,
+    );
+  }, [runId]);
+
+  const completed = isCompleted(
+    run?.status,
   );
 
-  const completed =
-    isSuccessful(run?.status);
+  const failed = isFailed(
+    run?.status,
+    run?.error,
+  );
 
-  const failed =
-    isFailed(run?.status, run?.error);
+  const currentIndex = useMemo(
+    () => getStageIndex(run?.stage),
+    [run?.stage],
+  );
 
   const currentStage =
     currentIndex >= 0
       ? STAGES[currentIndex]
       : null;
 
-  const elapsed = run
-    ? formatElapsed(
-        run.created_at,
-        run.completed_at,
-      )
-    : "—";
+  const progress = Math.max(
+    0,
+    Math.min(
+      100,
+      Number(run?.progress ?? 0),
+    ),
+  );
 
-  // Keep the live timer reactive while a run is active.
-  const liveElapsed = run?.created_at
-    ? formatElapsed(
+  const elapsed = run
+    ? formatDuration(
         run.created_at,
         completed || failed
           ? run.completed_at
           : new Date(now).toISOString(),
       )
-    : elapsed;
+    : "—";
+
+  const reportUrl =
+    `${API_URL}/runs/${encodeURIComponent(
+      runId,
+    )}/report`;
 
   if (loading && !run) {
     return (
       <main className="run-page">
-        <div className="run-loading">
-          <Loader2
-            size={21}
-            className="run-loading-spinner"
-          />
+        <div className="run-loading-screen">
+          <div className="run-loading-mark">
+            <span />
+            <span />
+            <span />
+          </div>
 
           <div>
-            <strong>Connecting to run</strong>
-            <span>
-              Retrieving the current pipeline state…
-            </span>
+            <strong>
+              Connecting to analysis
+            </strong>
+
+            <p>
+              Retrieving the current run state.
+            </p>
           </div>
         </div>
       </main>
@@ -291,190 +516,210 @@ export default function AnalysisRunPage() {
 
   return (
     <main className="run-page">
-      {/* Header */}
 
-      <header className="run-header">
-        <button
-          type="button"
-          className="run-back"
-          onClick={() => router.push("/analyze")}
+      {/* ----------------------------------------------------------
+          HEADER
+      ---------------------------------------------------------- */}
+
+      <header className="run-topbar">
+        <div className="run-breadcrumb">
+          <button
+            type="button"
+            onClick={() =>
+              router.push("/analyze")
+            }
+          >
+            Analyze
+          </button>
+
+          <span>/</span>
+
+          <strong>
+            Analysis run
+          </strong>
+        </div>
+
+        <div
+          className={`run-status ${
+            completed
+              ? "complete"
+              : failed
+                ? "failed"
+                : "active"
+          }`}
         >
-          <ArrowLeft size={16} />
-          New analysis
-        </button>
+          <span />
 
-        <div className="run-header-main">
-          <div>
-            <div className="run-kicker">
-              <span
-                className={
-                  completed
-                    ? "run-state-dot complete"
-                    : failed
-                      ? "run-state-dot failed"
-                      : "run-state-dot active"
-                }
-              />
-
-              {completed
-                ? "Analysis complete"
-                : failed
-                  ? "Analysis failed"
-                  : "Analysis in progress"}
-            </div>
-
-            <h1>
-              {run?.filename ??
-                "Production analysis"}
-            </h1>
-
-            <p>
-              Run ID{" "}
-              <code>{runId}</code>
-            </p>
-          </div>
-
-          <div className="run-header-actions">
-            <div className="run-stat">
-              <span>PROCESS</span>
-              <strong>
-                {run?.process_type
-                  ? String(run.process_type)
-                      .replaceAll("_", " ")
-                      .replace(
-                        /\b\w/g,
-                        (letter) =>
-                          letter.toUpperCase(),
-                      )
-                  : "—"}
-              </strong>
-            </div>
-
-            <div className="run-stat">
-              <span>ELAPSED</span>
-              <strong>{liveElapsed}</strong>
-            </div>
-          </div>
+          {completed
+            ? "Completed"
+            : failed
+              ? "Failed"
+              : "Running"}
         </div>
       </header>
 
-      {/* Request error */}
+      {/* ----------------------------------------------------------
+          ERROR
+      ---------------------------------------------------------- */}
 
       {requestError && (
-        <div className="run-request-warning">
-          <AlertTriangle size={16} />
+        <div className="run-error-banner">
+          <Icon
+            name="alert"
+            size={17}
+          />
 
-          <span>{requestError}</span>
+          <span>
+            {requestError}
+          </span>
 
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() =>
+              window.location.reload()
+            }
           >
+            <Icon
+              name="refresh"
+              size={14}
+            />
+
             Retry
           </button>
         </div>
       )}
 
-      {/* Main execution area */}
+      {/* ----------------------------------------------------------
+          TITLE
+      ---------------------------------------------------------- */}
 
-      <div className="run-layout">
-        <section className="run-console">
-          {/* Current operation */}
+      <section className="run-title">
+        <div>
+          <span className="run-eyebrow">
+            ANALYSIS RUN
+          </span>
 
-          <div className="current-operation">
-            <div className="operation-visual">
-              {failed ? (
-                <div className="operation-failed">
-                  <X size={24} />
-                </div>
-              ) : completed ? (
-                <div className="operation-complete">
-                  <Check size={24} />
-                </div>
-              ) : (
-                <div className="operation-active">
-                  <Loader2
-                    size={24}
-                    className="operation-spinner"
-                  />
-                </div>
+          <h1>
+            {run?.filename ||
+              "Production analysis"}
+          </h1>
+
+          <p>
+            Fibrion is processing your
+            production dataset through the
+            analytical workflow.
+          </p>
+        </div>
+
+        <div className="run-title-meta">
+          <div>
+            <span>PROCESS</span>
+
+            <strong>
+              {formatProcess(
+                run?.process_type,
               )}
-            </div>
+            </strong>
+          </div>
 
-            <div className="operation-copy">
-              <span className="section-label">
-                CURRENT OPERATION
+          <div>
+            <span>RUN ID</span>
+
+            <strong>
+              {runId.slice(0, 8)}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      {/* ----------------------------------------------------------
+          COMPLETION ACTION
+      ---------------------------------------------------------- */}
+
+      {completed && (
+        <section className="run-complete-banner">
+          <div className="complete-symbol">
+            <Icon
+              name="check"
+              size={20}
+            />
+          </div>
+
+          <div className="complete-copy">
+            <span>
+              ANALYSIS COMPLETE
+            </span>
+
+            <h2>
+              Your production analysis is ready.
+            </h2>
+
+            <p>
+              The pipeline completed successfully.
+              Download the generated report directly
+              from this run.
+            </p>
+          </div>
+
+          <a
+            href={reportUrl}
+            className="download-button"
+            download
+          >
+            <Icon
+              name="download"
+              size={17}
+            />
+
+            Download report
+
+            <Icon
+              name="arrow"
+              size={15}
+            />
+          </a>
+        </section>
+      )}
+
+      {/* ----------------------------------------------------------
+          MAIN
+      ---------------------------------------------------------- */}
+
+      <div className="run-grid">
+
+        {/* PIPELINE */}
+
+        <section className="pipeline-panel">
+
+          <div className="panel-heading">
+            <div>
+              <span className="run-eyebrow">
+                PIPELINE
               </span>
 
               <h2>
-                {failed
-                  ? "Pipeline stopped"
-                  : completed
-                    ? "Analysis ready"
-                    : currentStage?.label ??
-                      "Initializing pipeline"}
+                Analysis execution
               </h2>
-
-              <p>
-                {failed
-                  ? run?.error ??
-                    "The pipeline encountered an error."
-                  : completed
-                    ? "All required pipeline stages have completed successfully."
-                    : currentStage?.description ??
-                      "Preparing the production dataset for analysis."}
-              </p>
             </div>
 
-            <div className="operation-state">
-              {completed ? (
-                <span className="state-pill success">
-                  <Check size={13} />
-                  Complete
-                </span>
-              ) : failed ? (
-                <span className="state-pill error">
-                  <X size={13} />
-                  Failed
-                </span>
-              ) : (
-                <span className="state-pill running">
-                  <span />
-                  Running
-                </span>
-              )}
-            </div>
+            <strong className="progress-value">
+              {progress}%
+            </strong>
           </div>
 
-          {/* Timeline */}
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{
+                width: `${progress}%`,
+              }}
+            />
+          </div>
 
-          <div className="stage-section">
-            <div className="stage-section-header">
-              <div>
-                <span className="section-label">
-                  PIPELINE
-                </span>
-
-                <h2>Execution stages</h2>
-              </div>
-
-              <span className="stage-count">
-                {completed
-                  ? `${STAGES.length}/${STAGES.length}`
-                  : currentIndex >= 0
-                    ? `${Math.min(
-                        currentIndex,
-                        STAGES.length,
-                      )}/${STAGES.length}`
-                    : `0/${STAGES.length}`}
-              </span>
-            </div>
-
-            <div className="stage-list">
-              {STAGES.map((stage, index) => {
-                const Icon = stage.icon;
-
-                const stageCompleted =
+          <div className="pipeline-list">
+            {STAGES.map(
+              (stage, index) => {
+                const stageComplete =
                   completed ||
                   (!failed &&
                     currentIndex > index);
@@ -490,45 +735,45 @@ export default function AnalysisRunPage() {
 
                 return (
                   <div
-                    className={`stage-row ${
-                      stageCompleted
-                        ? "completed"
+                    key={stage.key}
+                    className={`pipeline-row ${
+                      stageComplete
+                        ? "is-complete"
                         : ""
                     } ${
                       stageCurrent
-                        ? "current"
+                        ? "is-current"
                         : ""
                     } ${
                       stageFailed
-                        ? "failed"
+                        ? "is-failed"
                         : ""
                     }`}
-                    key={stage.key}
                   >
-                    <div className="stage-marker-column">
+                    <div className="stage-line-column">
                       <div className="stage-marker">
-                        {stageCompleted ? (
-                          <Check size={14} />
+                        {stageComplete ? (
+                          <Icon
+                            name="check"
+                            size={13}
+                          />
                         ) : stageFailed ? (
-                          <X size={14} />
+                          <Icon
+                            name="alert"
+                            size={13}
+                          />
                         ) : stageCurrent ? (
-                          <Loader2
-                            size={14}
-                            className="stage-spinner"
-                          />
+                          <span className="stage-pulse" />
                         ) : (
-                          <Circle
-                            size={8}
-                            fill="currentColor"
-                          />
+                          <span className="stage-dot" />
                         )}
                       </div>
 
                       {index <
                         STAGES.length - 1 && (
                         <div
-                          className={`stage-connector ${
-                            stageCompleted
+                          className={`stage-line ${
+                            stageComplete
                               ? "filled"
                               : ""
                           }`}
@@ -536,71 +781,76 @@ export default function AnalysisRunPage() {
                       )}
                     </div>
 
-                    <div className="stage-icon">
-                      <Icon
-                        size={17}
-                        strokeWidth={1.6}
-                      />
-                    </div>
-
-                    <div className="stage-info">
-                      <strong>
-                        {stage.label}
-                      </strong>
-
-                      <span>
-                        {stageCurrent
-                          ? "Processing now"
-                          : stageCompleted
-                            ? "Completed"
-                            : stageFailed
-                              ? "Stopped"
-                              : stage.description}
-                      </span>
-                    </div>
-
                     <div className="stage-number">
-                      {String(index + 1).padStart(
-                        2,
-                        "0",
-                      )}
+                      {String(
+                        index + 1,
+                      ).padStart(2, "0")}
+                    </div>
+
+                    <div className="stage-content">
+                      <div className="stage-title">
+                        <strong>
+                          {stage.label}
+                        </strong>
+
+                        {stageCurrent && (
+                          <span className="stage-running">
+                            Processing
+                          </span>
+                        )}
+
+                        {stageComplete && (
+                          <span className="stage-done">
+                            Complete
+                          </span>
+                        )}
+
+                        {stageFailed && (
+                          <span className="stage-error">
+                            Failed
+                          </span>
+                        )}
+                      </div>
+
+                      <p>
+                        {stage.description}
+                      </p>
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              },
+            )}
           </div>
         </section>
 
-        {/* Run information */}
+        {/* SIDE INFORMATION */}
 
-        <aside className="run-sidebar">
-          <div className="run-info-block">
-            <span className="section-label">
-              RUN INFORMATION
+        <aside className="run-details">
+
+          <section className="details-block">
+            <span className="run-eyebrow">
+              RUN DETAILS
             </span>
 
-            <div className="info-row">
-              <span>Status</span>
+            <div className="detail-row">
+              <span>Dataset</span>
 
               <strong>
-                {completed
-                  ? "Completed"
-                  : failed
-                    ? "Failed"
-                    : "Running"}
+                {run?.filename || "—"}
               </strong>
             </div>
 
-            <div className="info-row">
+            <div className="detail-row">
               <span>Process</span>
 
               <strong>
-                {run?.process_type ?? "—"}
+                {formatProcess(
+                  run?.process_type,
+                )}
               </strong>
             </div>
 
-            <div className="info-row">
+            <div className="detail-row">
               <span>Started</span>
 
               <strong>
@@ -610,87 +860,118 @@ export default function AnalysisRunPage() {
               </strong>
             </div>
 
-            <div className="info-row">
+            <div className="detail-row">
               <span>Duration</span>
 
-              <strong>{liveElapsed}</strong>
+              <strong>
+                {elapsed}
+              </strong>
             </div>
-          </div>
+          </section>
 
-          <div className="run-info-block">
-            <span className="section-label">
-              OUTPUTS
+          <section className="details-block">
+            <span className="run-eyebrow">
+              OUTPUT
             </span>
 
-            <div className="output-row">
-              <div className="output-row-icon">
-                <FileBarChart3 size={15} />
+            <div className="output-item">
+              <div className="output-icon">
+                <Icon
+                  name="file"
+                  size={17}
+                />
               </div>
 
               <div>
                 <strong>
-                  Visualizations
+                  Production report
                 </strong>
 
                 <span>
+                  PDF generated by Fibrion
+                </span>
+              </div>
+            </div>
+
+            <div className="output-item">
+              <div className="output-icon">
+                <Icon
+                  name="chart"
+                  size={17}
+                />
+              </div>
+
+              <div>
+                <strong>
                   Analytical charts
-                </span>
-              </div>
-            </div>
-
-            <div className="output-row">
-              <div className="output-row-icon">
-                <FileOutput size={15} />
-              </div>
-
-              <div>
-                <strong>
-                  Management report
                 </strong>
 
                 <span>
-                  Generated report artifact
+                  Generated visual outputs
                 </span>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="run-info-block grounded">
-            <div className="grounded-icon">
-              <ShieldCheck size={17} />
+          <section className="details-block verification-block">
+            <div className="verification-icon">
+              <Icon
+                name="shield"
+                size={18}
+              />
             </div>
 
             <div>
+              <span className="run-eyebrow">
+                QUALITY GATE
+              </span>
+
               <strong>
-                Verification gate
+                {completed
+                  ? "Verification complete"
+                  : "Verification pending"}
               </strong>
 
               <p>
-                Final outputs are checked before
-                the run is considered complete.
+                Fibrion performs verification as
+                the final stage before the report
+                is considered ready.
               </p>
             </div>
-          </div>
+          </section>
 
-          {completed && (
-            <button
-              type="button"
-              className="view-results-button"
-              onClick={() =>
-                router.push(
-                  `/analysis/${runId}/results`,
-                )
-              }
-            >
-              Open results
-              <ArrowLeft
-                size={16}
-                className="results-arrow"
-              />
-            </button>
-          )}
+          {!completed &&
+            !failed && (
+              <div className="waiting-note">
+                <Icon
+                  name="clock"
+                  size={15}
+                />
+
+                <span>
+                  This page updates automatically
+                  while the analysis is running.
+                </span>
+              </div>
+            )}
         </aside>
       </div>
+
+      {/* ----------------------------------------------------------
+          FOOTER
+      ---------------------------------------------------------- */}
+
+      <footer className="run-footer">
+        <Link href="/analyze">
+          <span>←</span>
+          Start another analysis
+        </Link>
+
+        <span>
+          {run?.message ||
+            "Fibrion analytical pipeline"}
+        </span>
+      </footer>
     </main>
   );
 }
