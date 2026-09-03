@@ -2,323 +2,173 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { useState, type ReactNode } from "react";
 
 type NavItem = {
   href: string;
   label: string;
-  description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 };
 
-function GridIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="5" height="5" rx="1" stroke="currentColor" />
-      <rect x="12" y="3" width="5" height="5" rx="1" stroke="currentColor" />
-      <rect x="3" y="12" width="5" height="5" rx="1" stroke="currentColor" />
-      <rect x="12" y="12" width="5" height="5" rx="1" stroke="currentColor" />
-    </svg>
-  );
+function Icon({ name }: { name: "overview" | "analyze" | "datasets" | "reports" | "menu" | "close" }) {
+  const common = {
+    width: 17,
+    height: 17,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  switch (name) {
+    case "overview":
+      return (
+        <svg {...common}>
+          <path d="M4 19V5" />
+          <path d="M4 19h16" />
+          <path d="m7 15 3-4 3 2 5-7" />
+        </svg>
+      );
+    case "analyze":
+      return (
+        <svg {...common}>
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 21h14" />
+        </svg>
+      );
+    case "datasets":
+      return (
+        <svg {...common}>
+          <ellipse cx="12" cy="5" rx="8" ry="3" />
+          <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+          <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+        </svg>
+      );
+    case "reports":
+      return (
+        <svg {...common}>
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <path d="M14 2v6h6" />
+          <path d="M8 13h8M8 17h5" />
+        </svg>
+      );
+    case "menu":
+      return (
+        <svg {...common}>
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      );
+    case "close":
+      return (
+        <svg {...common}>
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      );
+  }
 }
 
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M10 13V3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-      <path
-        d="M6.5 6.5 10 3l3.5 3.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4 11.5v3.25A1.75 1.75 0 0 0 5.75 16.5h8.5A1.75 1.75 0 0 0 16 14.75V11.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path
-        d="m6 3 4 5-4 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function MenuIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="m5 5 10 10M15 5 5 15"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path
-        d="M4 6h12M4 10h12M4 14h12"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-const navItems: NavItem[] = [
-  {
-    href: "/",
-    label: "Overview",
-    description: "Production intelligence",
-    icon: <GridIcon />,
-  },
-  {
-    href: "/analyze",
-    label: "Analyze",
-    description: "Run a new analysis",
-    icon: <UploadIcon />,
-  },
+const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Overview", icon: <Icon name="overview" /> },
+  { href: "/analyze", label: "Analyze", icon: <Icon name="analyze" /> },
+  { href: "/datasets", label: "Datasets", icon: <Icon name="datasets" /> },
+  { href: "/reports", label: "Reports", icon: <Icon name="reports" /> },
 ];
 
-function isActivePath(pathname: string, href: string) {
-  if (href === "/") {
-    return pathname === "/";
-  }
-
-  return pathname === href || pathname.startsWith(`${href}/`);
+// Maps a pathname to what the header breadcrumb should say. Run
+// detail pages are dynamic (/analysis/[runId]) and intentionally
+// not in the sidebar nav — they're reached by clicking into a run,
+// not by browsing to them directly.
+function headerLabelFor(pathname: string) {
+  if (pathname === "/") return "Overview";
+  if (pathname.startsWith("/analyze")) return "Analyze";
+  if (pathname.startsWith("/datasets")) return "Datasets";
+  if (pathname.startsWith("/reports")) return "Reports";
+  if (pathname.startsWith("/analysis/")) return "Analysis run";
+  return "Fibrion";
 }
 
-function getPageContext(pathname: string) {
-  if (pathname === "/") {
-    return {
-      section: "Workspace",
-      title: "Overview",
-      description: "Production intelligence at a glance",
-    };
-  }
-
-  if (pathname === "/analyze" || pathname.startsWith("/analyze/")) {
-    return {
-      section: "Workspace",
-      title: "Analyze",
-      description: "Run a production data analysis",
-    };
-  }
-
-  if (pathname.startsWith("/analysis/")) {
-    return {
-      section: "Analysis",
-      title: "Analysis run",
-      description: "Live analysis execution",
-    };
-  }
-
-  return {
-    section: "Workspace",
-    title: "Fibrion",
-    description: "Industrial intelligence",
-  };
-}
-
-export function AppShell({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const page = getPageContext(pathname);
-
-  function closeMobileNav() {
-    setMobileOpen(false);
-  }
-
   return (
     <div className="app-shell">
-      {/* ------------------------------------------------------------
-          Desktop / mobile navigation
-      ------------------------------------------------------------- */}
-
-      <aside
-        className={`app-sidebar ${
-          mobileOpen ? "app-sidebar-open" : ""
-        }`}
-      >
+      <aside className={`app-sidebar ${mobileOpen ? "app-sidebar-open" : ""}`}>
         <div className="sidebar-inner">
-          {/* Brand */}
           <div className="sidebar-brand">
-            <Link
-              href="/"
-              className="brand-lockup"
-              onClick={closeMobileNav}
-              aria-label="Fibrion overview"
-            >
-              <div className="brand-symbol">
+            <Link href="/" className="brand-lockup" onClick={() => setMobileOpen(false)}>
+              <span className="brand-mark">
                 <span />
                 <span />
                 <span />
-              </div>
-
-              <div className="brand-copy">
-                <div className="brand-name">FIBRION</div>
-                <div className="brand-caption">
-                  INDUSTRIAL INTELLIGENCE
-                </div>
-              </div>
+                <span />
+              </span>
+              <span>
+                <span className="brand-name">Fibrion</span>
+                <div className="brand-caption">Production intelligence</div>
+              </span>
             </Link>
           </div>
 
-          {/* Workspace navigation */}
-          <div className="sidebar-section">
-            <div className="sidebar-section-label">
-              Workspace
-            </div>
+          <nav className="sidebar-nav">
+            {NAV_ITEMS.map((item) => {
+              const active =
+                item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 
-            <nav className="sidebar-nav" aria-label="Primary">
-              {navItems.map((item) => {
-                const active = isActivePath(
-                  pathname,
-                  item.href,
-                );
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`sidebar-nav-item ${active ? "sidebar-nav-item-active" : ""}`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="sidebar-nav-icon">{item.icon}</span>
+                  <span className="sidebar-nav-label">{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`sidebar-nav-item ${
-                      active ? "sidebar-nav-item-active" : ""
-                    }`}
-                    onClick={closeMobileNav}
-                  >
-                    <span className="sidebar-nav-icon">
-                      {item.icon}
-                    </span>
-
-                    <span className="sidebar-nav-copy">
-                      <span className="sidebar-nav-label">
-                        {item.label}
-                      </span>
-
-                      <span className="sidebar-nav-description">
-                        {item.description}
-                      </span>
-                    </span>
-
-                    {active && (
-                      <span className="sidebar-nav-arrow">
-                        <ChevronIcon />
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* System status */}
-          <div className="sidebar-bottom">
-            <div className="system-card">
-              <div className="system-card-top">
-                <span className="system-indicator">
-                  <span />
-                </span>
-
-                <span className="system-label">
-                  System operational
-                </span>
-              </div>
-
-              <div className="system-description">
-                Analysis services are available.
-              </div>
-            </div>
-
-            <div className="sidebar-version">
-              <span>FIBRION</span>
-              <span>v0.1</span>
+          <div className="sidebar-foot">
+            <div className="sidebar-status">
+              <span className="sidebar-status-dot" />
+              Operational
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Mobile overlay */}
       {mobileOpen && (
-        <button
-          className="sidebar-overlay"
-          aria-label="Close navigation"
-          onClick={closeMobileNav}
-        />
+        <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
       )}
-
-      {/* ------------------------------------------------------------
-          Main application area
-      ------------------------------------------------------------- */}
 
       <div className="app-main">
         <header className="app-header">
-          <div className="app-header-left">
+          <div style={{ display: "flex", alignItems: "center" }}>
             <button
               type="button"
               className="mobile-nav-button"
-              onClick={() =>
-                setMobileOpen((current) => !current)
-              }
-              aria-label={
-                mobileOpen
-                  ? "Close navigation"
-                  : "Open navigation"
-              }
-              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen((value) => !value)}
+              aria-label="Toggle navigation"
             >
-              <MenuIcon open={mobileOpen} />
+              <Icon name={mobileOpen ? "close" : "menu"} />
             </button>
 
-            <div className="header-context">
-              <div className="header-section">
-                {page.section}
-              </div>
-
-              <div className="header-separator" />
-
-              <div className="header-page">
-                {page.title}
-              </div>
+            <div className="header-crumb">
+              Fibrion / <strong>{headerLabelFor(pathname)}</strong>
             </div>
           </div>
 
-          <div className="app-header-right">
-            <div className="header-system-status">
-              <span className="header-system-dot" />
-              <span>Operational</span>
-            </div>
-            <ThemeToggle />
+          <div className="header-status">
+            <span className="header-status-dot" />
+            API connected
           </div>
         </header>
 
-        <main className="app-content">
-          {children}
-        </main>
+        <div className="app-content">{children}</div>
       </div>
     </div>
   );

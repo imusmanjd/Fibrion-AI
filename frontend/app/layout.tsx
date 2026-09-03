@@ -1,11 +1,33 @@
 import type { Metadata } from "next";
-import { ThemeProvider } from "next-themes";
+import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 
+const display = Space_Grotesk({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Fibrion",
-  description: "Industrial production intelligence and analytics.",
+  description: "Production intelligence for textile manufacturing.",
 };
 
 export default function RootLayout({
@@ -14,20 +36,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
+    <html
+      lang="en"
+      className={`${display.variable} ${plexSans.variable} ${plexMono.variable}`}
+    >
       <body>
-        <ThemeProvider
-          attribute="data-theme"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <AppShell>{children}</AppShell>
-        </ThemeProvider>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -1,68 +1,78 @@
-export type RunStatus =
-  | "queued"
-  | "running"
-  | "completed"
-  | "failed";
+/**
+ * frontend/lib/types.ts
+ *
+ * Types transcribed directly from the backend response shapes
+ * (backend/services/run_store.py, backend/agents/*.py) — not
+ * aspirational. Every field here has been checked against the
+ * actual Python that produces it.
+ */
 
-export type StageStatus =
-  | "pending"
-  | "running"
-  | "completed";
+export type RunStatus = "queued" | "running" | "completed" | "failed";
 
-export interface PipelineStage {
-  name: string;
-  label: string;
-  status: StageStatus;
-  started_at: string | null;
-  completed_at: string | null;
+/**
+ * Fibrion's only currently-registered process module. Others
+ * mentioned in the README (spinning, dyeing/finishing, garment) are
+ * planned but not registered in backend/core/schema_registry — the
+ * API rejects anything else with "Unknown process type".
+ */
+export type ProcessType = "weaving";
+
+export interface Anomaly {
+  group_key: string;
+  group_value: string | number;
+  metric: string;
+  value: number;
+  run_mean: number;
+  z_score: number;
+}
+
+export interface KpiResults {
+  overall?: Record<string, number | null>;
+  by_order?: Record<string, unknown>[];
+  monthly_production_yds?: Record<string, number>;
+  [key: string]: unknown;
 }
 
 export interface RunResult {
-  run_id?: string;
-  file_path?: string;
-  cleaned_data_path?: string;
-  process_type?: string;
+  report_path?: string | null;
+  chart_paths?: string[];
 
-  validation_results?: Record<string, unknown>;
-  kpi_results?: Record<string, any>;
-  anomalies?: any[];
+  kpi_results?: KpiResults;
+  anomalies?: Anomaly[];
 
+  analysis_text?: string;
   analysis_executive_summary?: string;
   analysis_key_findings?: string[];
   analysis_likely_causes?: string[];
   analysis_recommendations?: string[];
 
-  chart_paths?: string[];
-  report_path?: string;
-
   verification_passed?: boolean;
-  verification_details?: Record<string, unknown>;
+  verification_issues?: string[];
+  verification_advisory_issues?: string[];
 
-  delivery_status?: Record<string, unknown>;
   error?: Record<string, unknown> | string | null;
+
+  [key: string]: unknown;
 }
 
+/** Exact shape of a GET /runs/{run_id} response. */
 export interface AnalysisRun {
   run_id: string;
   filename: string;
   process_type: string;
   status: RunStatus;
 
-  current_stage: string | null;
-  current_stage_label: string;
+  /** Current pipeline stage key, e.g. "kpi", "verification", "complete". */
+  stage: string;
 
   message: string;
+  progress: number;
 
-  completed_stages: string[];
-
-  stages: Record<string, PipelineStage>;
+  error: Record<string, unknown> | string | null;
+  result: RunResult | null;
 
   created_at: string;
   updated_at: string;
-  completed_at: string | null;
-
-  result: RunResult | null;
-  error: unknown;
 }
 
 export interface UploadResponse {

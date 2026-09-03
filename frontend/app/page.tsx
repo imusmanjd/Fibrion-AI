@@ -1,539 +1,174 @@
 "use client";
 
-import {
-  ArrowRight,
-  BarChart3,
-  CheckCircle2,
-  Database,
-  FileText,
-  Gauge,
-  Play,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import "./overview.css";
+import { hydrateRuns } from "@/lib/run-cache";
+import type { AnalysisRun } from "@/lib/types";
+import EmptyState from "@/components/ui/EmptyState";
 
-type RunState = {
-  run_id?: string;
-  status?: string;
-  stage?: string;
-  progress?: number;
-  message?: string;
-  process_type?: string;
-  filename?: string;
-  error?: string | null;
-  verification_passed?: boolean;
-};
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://127.0.0.1:8000";
-
-const workflow = [
-  {
-    number: "01",
-    title: "Ingest",
-    description: "Read and structure production data.",
-  },
-  {
-    number: "02",
-    title: "Validate",
-    description: "Check schema, values, and data integrity.",
-  },
-  {
-    number: "03",
-    title: "Measure",
-    description: "Calculate production and quality KPIs.",
-  },
-  {
-    number: "04",
-    title: "Analyze",
-    description: "Identify operational patterns and findings.",
-  },
-  {
-    number: "05",
-    title: "Visualize",
-    description: "Turn the results into useful charts.",
-  },
-  {
-    number: "06",
-    title: "Report",
-    description: "Assemble a management-ready production report.",
-  },
-  {
-    number: "07",
-    title: "Verify",
-    description: "Check generated outputs before delivery.",
-  },
-  {
-    number: "08",
-    title: "Deliver",
-    description: "Download or send the verified report.",
-  },
+const PIPELINE = [
+  { key: "ingestion", label: "Ingestion", note: "Reads and prepares the uploaded dataset." },
+  { key: "validation", label: "Validation", note: "Checks data quality and structure before anything is trusted." },
+  { key: "kpi", label: "KPI Engine", note: "Computes fulfillment, rejection, and shrink-variance metrics." },
+  { key: "analysis", label: "AI Analysis", note: "Drafts findings, likely causes, and recommendations." },
+  { key: "visualization", label: "Visualization", note: "Builds the charts attached to the run." },
+  { key: "report", label: "Report Generation", note: "Assembles the management-ready PDF." },
+  { key: "verification", label: "Verification", note: "Re-checks the analysis against the source numbers before release." },
+  { key: "notification", label: "Notification", note: "Delivers the report to the requested channels." },
 ];
 
-export default function OverviewPage() {
-  const [lastRun, setLastRun] =
-    useState<RunState | null>(null);
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
 
-  const [loadingRun, setLoadingRun] =
-    useState(true);
+export default function OverviewPage() {
+  const [runs, setRuns] = useState<AnalysisRun[] | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
 
-    async function loadLastRun() {
-      try {
-        const storedRunId =
-          window.sessionStorage.getItem(
-            "fibrion:lastRunId",
-          );
-
-        if (!storedRunId) {
-          if (!cancelled) {
-            setLoadingRun(false);
-          }
-
-          return;
-        }
-
-        const response = await fetch(
-          `${API_URL}/runs/${encodeURIComponent(
-            storedRunId,
-          )}`,
-          {
-            cache: "no-store",
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            "Unable to load the latest run.",
-          );
-        }
-
-        const data =
-          (await response.json()) as RunState;
-
-        if (!cancelled) {
-          setLastRun(data);
-        }
-      } catch {
-        if (!cancelled) {
-          setLastRun(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingRun(false);
-        }
-      }
-    }
-
-    void loadLastRun();
+    hydrateRuns().then((result) => {
+      if (active) setRuns(result);
+    });
 
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, []);
 
-  const hasRun = Boolean(
-    lastRun?.run_id,
+  const completed = (runs ?? []).filter((run) => run.status === "completed");
+  const fulfillment = average(
+    completed
+      .map((run) => run.result?.kpi_results?.overall?.overall_fulfillment_pct)
+      .filter((value): value is number => typeof value === "number"),
+  );
+  const rejection = average(
+    completed
+      .map((run) => run.result?.kpi_results?.overall?.overall_rejection_pct)
+      .filter((value): value is number => typeof value === "number"),
+  );
+  const anomalyCount = completed.reduce(
+    (sum, run) => sum + (run.result?.anomalies?.length ?? 0),
+    0,
   );
 
-  const runCompleted =
-    lastRun?.status === "completed";
-
-  const runFailed =
-    lastRun?.status === "failed" ||
-    Boolean(lastRun?.error);
-
   return (
-    <div className="overview-page">
-
-      {/* ---------------------------------------------------------
-          Page heading
-      ---------------------------------------------------------- */}
-
-      <section className="overview-heading">
+    <div>
+      <div className="page-heading">
         <div>
-          <div className="overview-eyebrow">
-            Production intelligence
-          </div>
-
-          <h1>
-            Understand your production
-            data.
+          <span className="eyebrow">PRODUCTION INTELLIGENCE — WEAVING</span>
+          <h1 className="page-title">
+            See every yard before it leaves the loom.
           </h1>
-
-          <p>
-            Fibrion turns production datasets
-            into measurable performance
-            insights, operational findings,
-            visual analysis, and verified
-            reports.
+          <p className="page-description">
+            Fibrion runs an 8-agent pipeline over your production data —
+            ingestion through verified reporting — and flags what needs a
+            second look before it reaches a customer.
           </p>
         </div>
 
-        <Link
-          href="/analyze"
-          className="overview-primary-action"
-        >
-          <Play
-            size={16}
-            strokeWidth={2}
-          />
-
-          Start analysis
-
-          <ArrowRight
-            size={15}
-            strokeWidth={2}
-          />
+        <Link href="/analyze" className="button button-primary button-large">
+          Start new analysis
         </Link>
-      </section>
+      </div>
 
-      {/* ---------------------------------------------------------
-          Main workspace
-      ---------------------------------------------------------- */}
-
-      <section className="overview-workspace">
-
-        {/* Primary introduction */}
-
-        <div className="overview-intro">
-          <div className="overview-intro-top">
-            <div className="overview-intro-icon">
-              <Gauge
-                size={19}
-                strokeWidth={1.7}
-              />
-            </div>
-
-            <span>
-              ANALYTICAL WORKSPACE
-            </span>
-          </div>
-
-          <h2>
-            From raw production data
-            to actionable evidence.
-          </h2>
-
-          <p>
-            Upload a production dataset,
-            run the weaving workflow,
-            and let Fibrion run the complete
-            analytical workflow. Deterministic
-            calculations handle the numbers;
-            analysis turns them into operational
-            findings.
-          </p>
-
-          <Link
-            href="/analyze"
-            className="overview-text-action"
-          >
-            Run a dataset
-            <ArrowRight size={15} />
-          </Link>
-        </div>
-
-        {/* Capability list */}
-
-        <div className="overview-capabilities">
-          <Capability
-            icon={<Database size={17} />}
-            title="Production data"
-            description="Work directly from your uploaded CSV datasets."
-          />
-
-          <Capability
-            icon={<BarChart3 size={17} />}
-            title="Operational metrics"
-            description="Calculate production, quality, fulfillment, and rejection measures."
-          />
-
-          <Capability
-            icon={<FileText size={17} />}
-            title="Analytical outputs"
-            description="Generate charts and a structured production report."
-          />
-
-          <Capability
-            icon={<ShieldCheck size={17} />}
-            title="Verification"
-            description="Run a final consistency check before outputs are delivered."
-          />
-        </div>
-      </section>
-
-      {/* ---------------------------------------------------------
-          Latest analysis
-      ---------------------------------------------------------- */}
-
-      <section className="overview-section">
-
-        <div className="overview-section-heading">
+      <section className="section-block">
+        <div className="section-header-row">
           <div>
-            <div className="overview-eyebrow">
-              Latest activity
-            </div>
-
-            <h2>
-              Recent analysis
-            </h2>
+            <h2 className="section-title">This session</h2>
+            <p className="section-description">
+              Aggregated from runs started in this browser. Fibrion's
+              current backend is in-memory with no shared history yet —
+              this is a live view, not a database.
+            </p>
           </div>
-
-          <Link
-            href="/analyze"
-            className="overview-section-link"
-          >
-            New analysis
-            <ArrowRight size={14} />
-          </Link>
         </div>
 
-        {!loadingRun && !hasRun && (
-          <div className="overview-empty">
-            <div className="overview-empty-icon">
-              <Upload
-                size={18}
-                strokeWidth={1.7}
-              />
-            </div>
-
-            <div>
-              <h3>
-                No analysis in this session
-              </h3>
-
-              <p>
-                Upload a production dataset to
-                begin your first analysis.
-              </p>
-            </div>
-
-            <Link
-              href="/analyze"
-              className="overview-small-button"
-            >
-              Start analysis
-            </Link>
+        {runs === null ? (
+          <div className="metric-grid">
+            {[0, 1, 2].map((i) => (
+              <div className="metric-card" key={i}>
+                <div className="metric-label">—</div>
+              </div>
+            ))}
           </div>
-        )}
-
-        {!loadingRun && hasRun && (
-          <div className="overview-run">
-
-            <div className="overview-run-main">
-              <div className="overview-run-file">
-                <Database
-                  size={17}
-                  strokeWidth={1.7}
-                />
-              </div>
-
-              <div className="overview-run-copy">
-                <span>
-                  {lastRun?.process_type ||
-                    "Production analysis"}
-                </span>
-
-                <h3>
-                  {lastRun?.filename ||
-                    "Production dataset"}
-                </h3>
-
-                <p>
-                  {lastRun?.message ||
-                    "Analysis run recorded in this session."}
-                </p>
-              </div>
-            </div>
-
-            <div className="overview-run-meta">
-              <div>
-                <span>Status</span>
-
-                <strong
-                  className={
-                    runCompleted
-                      ? "status-complete"
-                      : runFailed
-                        ? "status-failed"
-                        : "status-running"
-                  }
-                >
-                  {runCompleted
-                    ? "Completed"
-                    : runFailed
-                      ? "Failed"
-                      : "Running"}
-                </strong>
-              </div>
-
-              <div>
-                <span>Stage</span>
-
-                <strong>
-                  {formatStage(
-                    lastRun?.stage,
-                  )}
-                </strong>
-              </div>
-
-              <div>
-                <span>Progress</span>
-
-                <strong>
-                  {Math.round(
-                    lastRun?.progress ?? 0,
-                  )}
-                  %
-                </strong>
-              </div>
-            </div>
-
-            {lastRun?.run_id && (
-              <Link
-                href={`/analysis/${encodeURIComponent(
-                  lastRun.run_id,
-                )}`}
-                className="overview-run-action"
-              >
-                Open run
-                <ArrowRight size={14} />
+        ) : completed.length === 0 ? (
+          <EmptyState
+            title="No completed runs yet"
+            description="Once an analysis finishes, its fulfillment, rejection, and anomaly counts will roll up here."
+            action={
+              <Link href="/analyze" className="button button-secondary">
+                Run your first analysis
               </Link>
-            )}
+            }
+          />
+        ) : (
+          <div className="metric-grid">
+            <div className="metric-card">
+              <div className="metric-card-top">
+                <span className="metric-label">Avg. fulfillment</span>
+              </div>
+              <div className="metric-value">
+                {fulfillment !== null ? `${fulfillment.toFixed(1)}%` : "—"}
+              </div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-card-top">
+                <span className="metric-label">Avg. rejection</span>
+              </div>
+              <div className="metric-value">
+                {rejection !== null ? `${rejection.toFixed(1)}%` : "—"}
+              </div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-card-top">
+                <span className="metric-label">Anomalies flagged</span>
+              </div>
+              <div className="metric-value">{anomalyCount}</div>
+            </div>
+
+            <div className="metric-card">
+              <div className="metric-card-top">
+                <span className="metric-label">Runs completed</span>
+              </div>
+              <div className="metric-value">{completed.length}</div>
+            </div>
           </div>
         )}
       </section>
 
-      {/* ---------------------------------------------------------
-          Workflow
-      ---------------------------------------------------------- */}
-
-      <section className="overview-section">
-
-        <div className="overview-section-heading">
+      <section className="section-block">
+        <div className="section-header-row">
           <div>
-            <div className="overview-eyebrow">
-              How Fibrion works
-            </div>
-
-            <h2>
-              One analytical workflow
-            </h2>
+            <h2 className="section-title">The pipeline</h2>
+            <p className="section-description">
+              Every upload runs through the same eight agents, in order.
+            </p>
           </div>
         </div>
 
-        <div className="overview-workflow">
-          {workflow.map((item) => (
-            <div
-              key={item.number}
-              className="overview-workflow-item"
-            >
-              <div className="overview-workflow-number">
-                {item.number}
-              </div>
-
-              <div>
-                <h3>
-                  {item.title}
-                </h3>
-
-                <p>
-                  {item.description}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ---------------------------------------------------------
-          Bottom system strip
-      ---------------------------------------------------------- */}
-
-      <section className="overview-system">
-
-        <div className="overview-system-status">
-          <span className="overview-system-dot" />
-
-          <div>
-            <span>
-              SYSTEM STATUS
-            </span>
-
-            <strong>
-              Operational
-            </strong>
-          </div>
-        </div>
-
-        <div className="overview-system-copy">
-          Analysis services are available.
-          Fibrion processes each dataset
-          through the configured analytical
-          pipeline.
-        </div>
-
-        <div className="overview-system-check">
-          <CheckCircle2
-            size={16}
-            strokeWidth={1.8}
-          />
-
-          Ready for analysis
+        <div className="data-table-wrap">
+          <table className="data-table">
+            <tbody>
+              {PIPELINE.map((stage, index) => (
+                <tr key={stage.key}>
+                  <td className="cell-mono" style={{ width: 40 }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </td>
+                  <td className="cell-primary" style={{ width: 200 }}>
+                    {stage.label}
+                  </td>
+                  <td className="cell-muted">{stage.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
   );
-}
-
-function Capability({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="overview-capability">
-      <div className="overview-capability-icon">
-        {icon}
-      </div>
-
-      <div>
-        <h3>
-          {title}
-        </h3>
-
-        <p>
-          {description}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function formatStage(
-  stage?: string,
-) {
-  if (!stage) {
-    return "Preparing";
-  }
-
-  return stage
-    .replaceAll("_", " ")
-    .replace(
-      /\b\w/g,
-      (character) =>
-        character.toUpperCase(),
-    );
 }
