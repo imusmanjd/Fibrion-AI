@@ -1,11 +1,3 @@
-"""
-backend/main.py
-
-FastAPI entrypoint for the Fibrion web application.
-
-The Telegram bot remains a separate process.
-"""
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -45,15 +37,7 @@ app = FastAPI(
 # ---------------------------------------------------------
 # CORS
 # ---------------------------------------------------------
-#
-# Next.js normally runs on localhost:3000 while FastAPI
-# runs on localhost:8000 during development.
-#
-# These origins allow the browser to call the API.
-#
-# We can later move these into configuration/environment
-# variables for production deployment.
-#
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -67,7 +51,7 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------
-# API routes
+# Routers
 # ---------------------------------------------------------
 
 app.include_router(upload_router)

@@ -39,60 +39,6 @@ class UploadResponse(BaseModel):
     message: str = "Analysis queued."
 
 
-def _pipeline_stage(stage: str) -> tuple[str, int, str]:
-    stages = {
-        "ingestion": (
-            "ingestion",
-            15,
-            "Fibrion is reading and preparing your dataset.",
-        ),
-        "validation": (
-            "validation",
-            30,
-            "Validation Agent is checking data quality and structure.",
-        ),
-        "kpi": (
-            "kpi",
-            45,
-            "KPI Engine is calculating production and quality metrics.",
-        ),
-        "analysis": (
-            "analysis",
-            62,
-            "AI Analyst is identifying findings, causes, and recommendations.",
-        ),
-        "visualization": (
-            "visualization",
-            75,
-            "Visualization Agent is building analytical charts.",
-        ),
-        "report": (
-            "report",
-            86,
-            "Report Agent is preparing the management report.",
-        ),
-        "verification": (
-            "verification",
-            94,
-            "Verification Agent is checking analytical consistency.",
-        ),
-        "notification": (
-            "notification",
-            97,
-            "Preparing requested delivery channels.",
-        ),
-    }
-
-    return stages.get(
-        stage,
-        (
-            stage,
-            5,
-            "Fibrion is processing your dataset.",
-        ),
-    )
-
-
 def _run_pipeline(
     run_id: str,
     initial_state: FibrionState,
@@ -166,7 +112,7 @@ async def upload_production_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     process_type: str = Form("weaving"),
-    delivery_channels: str = Form("telegram"),
+    delivery_channels: str = Form(""),
     telegram_chat_id: Optional[str] = Form(None),
     recipient_email: Optional[str] = Form(None),
     data_dictionary: Optional[str] = Form(None),
