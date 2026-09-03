@@ -1,118 +1,75 @@
-import type {
-  AnalysisRun,
-  UploadResponse,
-} from "./types";
+#!/bin/bash
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://127.0.0.1:8000";
+set -e
 
-export async function uploadDataset(
-  file: File,
-  processType = "weaving",
-  deliveryChannels: string[] = [],
-  telegramChatId?: string,
-  recipientEmail?: string,
-) {
-  const form = new FormData();
+PORT="${PORT:-10000}"
 
-  form.append("file", file);
-  form.append("process_type", processType);
-  form.append(
-    "delivery_channels",
-    deliveryChannels.join(","),
-  );
+echo "========================================="
+echo "Starting Fibrion AI"
+echo "========================================="
+echo "Public port: ${PORT}"
+echo "Backend port: 8000"
+echo "Frontend port: ${PORT}"
+echo "========================================="
 
-  if (telegramChatId) {
-    form.append(
-      "telegram_chat_id",
-      telegramChatId,
-    );
-  }
+# ---------------------------------------------------------
+# Start FastAPI backend
+# ---------------------------------------------------------
 
-  if (recipientEmail) {
-    form.append(
-      "recipient_email",
-      recipientEmail,
-    );
-  }
+cd /app/backend
 
-  const response = await fetch(
-    `${API_URL}/upload`,
-    {
-      method: "POST",
-      body: form,
-    },
-  );
+echo "Starting FastAPI..."
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      body || "Upload failed.",
-    );
-  }
+uvicorn main:app \
+    --host 0.0.0.0 \
+    --port 8000 &
 
-  return response.json() as Promise<UploadResponse>;
+BACKEND_PID=$!
+
+# ---------------------------------------------------------
+# Start Next.js frontend
+# ---------------------------------------------------------
+
+cd /app/frontend
+
+echo "Starting Next.js..."
+
+PORT="${PORT}" npm start &
+
+FRONTEND_PID=$!
+
+# ---------------------------------------------------------
+# Shutdown handling
+# ---------------------------------------------------------
+
+cleanup() {
+    echo "Shutting down Fibrion..."
+
+    kill "$BACKEND_PID" 2>/dev/null || true
+    kill "$FRONTEND_PID" 2>/dev/null || true
+
+    wait "$BACKEND_PID" 2>/dev/null || true
+    wait "$FRONTEND_PID" 2>/dev/null || true
 }
 
-export async function getRun(
-  runId: string,
-) {
-  const response = await fetch(
-    `${API_URL}/runs/${runId}`,
-    { cache: "no-store" },
-  );
+trap cleanup SIGTERM SIGINT EXIT
 
-  if (!response.ok) {
-    throw new Error(
-      "Could not retrieve analysis run.",
-    );
-  }
+# ---------------------------------------------------------
+# Keep container alive while both services run
+# ---------------------------------------------------------
 
-  return response.json() as Promise<AnalysisRun>;
-}
+while true; do
 
-export function getReportUrl(
-  runId: string,
-) {
-  return `${API_URL}/runs/${runId}/report`;
-}
+    if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+        echo "FastAPI process stopped."
+        exit 1
+    fi
 
-export function getChartUrl(
-  runId: string,
-  chartName: string,
-) {
-  return (
-    `${API_URL}/runs/${runId}/charts/` +
-    encodeURIComponent(chartName)
-  );
-}
+    if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+        echo "Next.js process stopped."
+        exit 1
+    fi
 
-export async function sendReport(
-  runId: string,
-  channel: "email" | "telegram",
-  recipient: string,
-) {
-  const response = await fetch(
-    `${API_URL}/runs/${runId}/send`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        channel,
-        recipient,
-      }),
-    },
-  );
+    sleep 2
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      body || "Could not send report.",
-    );
-  }
-
-  return response.json();
-}
+done
