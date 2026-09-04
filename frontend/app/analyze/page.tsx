@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 
 import { uploadDataset } from "@/lib/api";
 import { rememberRun } from "@/lib/run-cache";
+import { getDeliveryPrefs, saveDeliveryPrefs } from "@/lib/delivery-prefs";
+import RunView from "@/components/run/RunView";
 
 const PROCESS_OPTIONS = [
   { key: "weaving", label: "Weaving", sub: "Available now", enabled: true },
@@ -14,14 +15,8 @@ const PROCESS_OPTIONS = [
 ];
 
 const PIPELINE_PREVIEW = [
-  "Ingestion",
-  "Validation",
-  "KPI Engine",
-  "AI Analysis",
-  "Visualization",
-  "Report Generation",
-  "Verification",
-  "Notification",
+  "Ingestion", "Validation", "KPI Engine", "AI Analysis",
+  "Visualization", "Report Generation", "Verification", "Notification",
 ];
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls"];
@@ -33,8 +28,9 @@ function formatBytes(bytes: number) {
 }
 
 export default function AnalyzePage() {
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -47,6 +43,16 @@ export default function AnalyzePage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-fill delivery details from what was saved last time — no
+  // per-account backend yet, so this lives in the browser for now.
+  useEffect(() => {
+    const prefs = getDeliveryPrefs();
+    setEmailEnabled(prefs.emailEnabled);
+    setEmail(prefs.email);
+    setTelegramEnabled(prefs.telegramEnabled);
+    setTelegramChatId(prefs.telegramChatId);
+  }, []);
 
   function pickFile(candidate: File | undefined | null) {
     if (!candidate) return;
@@ -94,11 +100,33 @@ export default function AnalyzePage() {
         created_at: new Date().toISOString(),
       });
 
-      router.push(`/analysis/${response.run_id}`);
+      saveDeliveryPrefs({ emailEnabled, email, telegramEnabled, telegramChatId });
+
+      // Stay on this page — swap the form for the live run view
+      // instead of navigating, so starting and watching an analysis
+      // is one page, not two.
+      setActiveRunId(response.run_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+    } finally {
       setSubmitting(false);
     }
+  }
+
+  function resetToUpload() {
+    setActiveRunId(null);
+    setFile(null);
+    setError(null);
+  }
+
+  if (activeRunId) {
+    return (
+      <RunView
+        runId={activeRunId}
+        onReset={resetToUpload}
+        resetLabel="Run another analysis"
+      />
+    );
   }
 
   return (
@@ -116,7 +144,7 @@ export default function AnalyzePage() {
       </div>
 
       <div className="workbench-grid">
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           <div className="field-group">
             <span className="field-label">Dataset</span>
 
@@ -166,9 +194,7 @@ export default function AnalyzePage() {
               </div>
             )}
 
-            {error && (
-              <p style={{ color: "var(--fault)", fontSize: 12 }}>{error}</p>
-            )}
+            {error && <p style={{ color: "var(--fault)", fontSize: 12 }}>{error}</p>}
           </div>
 
           <div className="field-group">
@@ -190,7 +216,10 @@ export default function AnalyzePage() {
           </div>
 
           <div className="field-group">
-            <span className="field-label">Delivery (optional)</span>
+            <span className="field-label">Delivery</span>
+            <span className="field-hint">
+              Saved in this browser for next time — accounts and per-user settings land in a later phase.
+            </span>
 
             <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
               <input type="checkbox" checked={emailEnabled} onChange={(e) => setEmailEnabled(e.target.checked)} />
@@ -206,7 +235,7 @@ export default function AnalyzePage() {
               />
             )}
 
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginTop: 6 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginTop: 4 }}>
               <input type="checkbox" checked={telegramEnabled} onChange={(e) => setTelegramEnabled(e.target.checked)} />
               Send via Telegram
             </label>
@@ -251,8 +280,7 @@ export default function AnalyzePage() {
             <h4>Note</h4>
             <p style={{ fontSize: 12, color: "var(--text-soft)", lineHeight: 1.6, margin: 0 }}>
               Only the Weaving module is registered on the backend today.
-              Other process types are on the roadmap but will be rejected
-              by the API if selected.
+              Other process types are on the roadmap.
             </p>
           </div>
         </div>

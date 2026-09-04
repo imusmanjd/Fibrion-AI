@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 type NavItem = {
   href: string;
@@ -163,8 +164,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="header-status">
-            <span className="header-status-dot" />
-            API connected
+            <ThemeToggle />
           </div>
         </header>
 

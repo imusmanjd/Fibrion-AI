@@ -60,7 +60,7 @@ export default function OverviewPage() {
         <div>
           <span className="eyebrow">PRODUCTION INTELLIGENCE — WEAVING</span>
           <h1 className="page-title">
-            See every yard before it leaves the loom.
+            Raw loom data in. A verified production report out.
           </h1>
           <p className="page-description">
             Fibrion runs an 8-agent pipeline over your production data —
