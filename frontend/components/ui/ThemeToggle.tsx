@@ -42,9 +42,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={light ? "Switch to dark theme" : "Switch to light theme"}
     >
-      <span className="theme-toggle-thumb">
-        <SunMoonIcon light={light} />
-      </span>
+      <SunMoonIcon light={light} />
     </button>
   );
 }

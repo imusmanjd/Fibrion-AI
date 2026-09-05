@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent } from "react";
 
 import { uploadDataset } from "@/lib/api";
 import { rememberRun } from "@/lib/run-cache";
-import { getDeliveryPrefs, saveDeliveryPrefs } from "@/lib/delivery-prefs";
 import RunView from "@/components/run/RunView";
 
 const PROCESS_OPTIONS = [
@@ -36,23 +35,8 @@ export default function AnalyzePage() {
   const [dragActive, setDragActive] = useState(false);
   const [processType, setProcessType] = useState("weaving");
 
-  const [emailEnabled, setEmailEnabled] = useState(false);
-  const [telegramEnabled, setTelegramEnabled] = useState(false);
-  const [email, setEmail] = useState("");
-  const [telegramChatId, setTelegramChatId] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Pre-fill delivery details from what was saved last time — no
-  // per-account backend yet, so this lives in the browser for now.
-  useEffect(() => {
-    const prefs = getDeliveryPrefs();
-    setEmailEnabled(prefs.emailEnabled);
-    setEmail(prefs.email);
-    setTelegramEnabled(prefs.telegramEnabled);
-    setTelegramChatId(prefs.telegramChatId);
-  }, []);
 
   function pickFile(candidate: File | undefined | null) {
     if (!candidate) return;
@@ -80,18 +64,12 @@ export default function AnalyzePage() {
     setSubmitting(true);
     setError(null);
 
-    const channels: string[] = [];
-    if (emailEnabled && email) channels.push("email");
-    if (telegramEnabled && telegramChatId) channels.push("telegram");
-
     try {
-      const response = await uploadDataset(
-        file,
-        processType,
-        channels,
-        telegramEnabled ? telegramChatId : undefined,
-        emailEnabled ? email : undefined,
-      );
+      // No delivery channels collected here — those are offered on
+      // the completed run itself (see DeliveryPanel), via the
+      // existing POST /runs/{id}/send endpoint. Asking for an email
+      // before someone has even seen a result is backwards.
+      const response = await uploadDataset(file, processType, []);
 
       rememberRun({
         run_id: response.run_id,
@@ -99,8 +77,6 @@ export default function AnalyzePage() {
         process_type: processType,
         created_at: new Date().toISOString(),
       });
-
-      saveDeliveryPrefs({ emailEnabled, email, telegramEnabled, telegramChatId });
 
       // Stay on this page — swap the form for the live run view
       // instead of navigating, so starting and watching an analysis
@@ -215,41 +191,6 @@ export default function AnalyzePage() {
             </div>
           </div>
 
-          <div className="field-group">
-            <span className="field-label">Delivery</span>
-            <span className="field-hint">
-              Saved in this browser for next time — accounts and per-user settings land in a later phase.
-            </span>
-
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-              <input type="checkbox" checked={emailEnabled} onChange={(e) => setEmailEnabled(e.target.checked)} />
-              Email the report
-            </label>
-            {emailEnabled && (
-              <input
-                className="text-input"
-                type="email"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            )}
-
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, marginTop: 4 }}>
-              <input type="checkbox" checked={telegramEnabled} onChange={(e) => setTelegramEnabled(e.target.checked)} />
-              Send via Telegram
-            </label>
-            {telegramEnabled && (
-              <input
-                className="text-input"
-                type="text"
-                placeholder="Telegram chat ID"
-                value={telegramChatId}
-                onChange={(e) => setTelegramChatId(e.target.value)}
-              />
-            )}
-          </div>
-
           <button
             type="button"
             className="button button-primary button-large"
@@ -280,7 +221,9 @@ export default function AnalyzePage() {
             <h4>Note</h4>
             <p style={{ fontSize: 12, color: "var(--text-soft)", lineHeight: 1.6, margin: 0 }}>
               Only the Weaving module is registered on the backend today.
-              Other process types are on the roadmap.
+              Other process types are on the roadmap. Once your analysis
+              finishes, you'll get the option to email or Telegram the
+              report — no need to set that up now.
             </p>
           </div>
         </div>

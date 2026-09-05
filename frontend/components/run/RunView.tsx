@@ -10,6 +10,7 @@ import AnomalyList from "@/components/results/AnomalyList";
 import AnalysisNarrative from "@/components/results/AnalysisNarrative";
 import ChartGallery from "@/components/results/ChartGallery";
 import VerificationPanel from "@/components/results/VerificationPanel";
+import DeliveryPanel from "@/components/run/DeliveryPanel";
 
 // Exact stage keys + progress thresholds from backend/orchestration/graph.py's
 // STAGES dict — kept in sync with that file, not guessed.
@@ -277,15 +278,20 @@ export default function RunView({
 
       {completed && run.result && (
         <div className="results-view">
+          <section className="results-section" style={{ marginTop: 0 }}>
+            <div className="results-section-heading">
+              <span>DELIVERY</span>
+              <h2>Send this report</h2>
+            </div>
+            <DeliveryPanel runId={run.run_id} />
+          </section>
+
           <section className="results-section">
             <div className="results-section-heading">
               <span>KEY PERFORMANCE INDICATORS</span>
               <h2>Production KPIs</h2>
             </div>
-
-            <KpiGrid
-              overall={run.result.kpi_results?.overall}
-            />
+            <KpiGrid overall={run.result.kpi_results?.overall} />
           </section>
 
           <section className="results-section">
@@ -342,11 +348,10 @@ export default function RunView({
             <VerificationPanel
               passed={run.result.verification_passed}
               issues={run.result.verification_issues}
-              advisoryIssues={
-                run.result.verification_advisory_issues
-              }
+              advisoryIssues={run.result.verification_advisory_issues}
             />
           </section>
+
         </div>
       )}
     </div>

@@ -151,23 +151,20 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        <div className="data-table-wrap">
-          <table className="data-table">
-            <tbody>
-              {PIPELINE.map((stage, index) => (
-                <tr key={stage.key}>
-                  <td className="cell-mono" style={{ width: 40 }}>
-                    {String(index + 1).padStart(2, "0")}
-                  </td>
-                  <td className="cell-primary" style={{ width: 200 }}>
-                    {stage.label}
-                  </td>
-                  <td className="cell-muted">{stage.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flow-list">
+          {PIPELINE.map((stage, index) => (
+            <div className="flow-row" key={stage.key}>
+              <div className="flow-marker">
+                <div className="flow-dot">{String(index + 1).padStart(2, "0")}</div>
+              </div>
+              <div className="flow-content">
+                <div className="flow-title">{stage.label}</div>
+                <p className="flow-note">{stage.note}</p>
+              </div>
+            </div>
+          ))}
         </div>
+
       </section>
     </div>
   );
