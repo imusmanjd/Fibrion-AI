@@ -163,9 +163,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <div className="header-status">
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </header>
 
         <div className="app-content">{children}</div>
