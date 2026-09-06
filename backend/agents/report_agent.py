@@ -21,14 +21,22 @@ from orchestration.state import FibrionState
 logger=get_agent_logger("report")
 
 # ---------- DESIGN ----------
-NAVY=colors.HexColor("#172A46"); NAVY2=colors.HexColor("#2A456D")
-BLUE=colors.HexColor("#4475AD"); AMBER=colors.HexColor("#D2A04A")
-GREEN=colors.HexColor("#3E7D52"); RED=colors.HexColor("#B84C4C")
-ORANGE=colors.HexColor("#C27B2D"); INK=colors.HexColor("#202A38")
-MUTED=colors.HexColor("#687486"); BG=colors.HexColor("#F4F6F9")
-WHITE=colors.white; LINE=colors.HexColor("#D8DEE7")
-PALE_BLUE=colors.HexColor("#EDF3FA"); PALE_GREEN=colors.HexColor("#ECF5EE")
-PALE_RED=colors.HexColor("#FBECEC"); PALE_AMBER=colors.HexColor("#FFF5E4")
+NAVY = colors.HexColor("#172A46")
+NAVY2 = colors.HexColor("#2A456D")
+BLUE = colors.HexColor("#4475AD")
+AMBER = colors.HexColor("#D2A04A")
+GREEN = colors.HexColor("#3E7D52")
+RED = colors.HexColor("#B84C4C")
+ORANGE = colors.HexColor("#C27B2D")
+INK = colors.HexColor("#202A38")
+MUTED = colors.HexColor("#687486")
+BG = colors.HexColor("#F4F6F9")
+WHITE = colors.white
+LINE = colors.HexColor("#D8DEE7")
+PALE_BLUE = colors.HexColor("#EDF3FA")
+PALE_GREEN = colors.HexColor("#ECF5EE")
+PALE_RED = colors.HexColor("#FBECEC")
+PALE_AMBER = colors.HexColor("#FFF5E4")
 
 PW,PH=A4
 L=R=15*mm
@@ -72,7 +80,8 @@ ST={
 
 # ---------- HELPERS ----------
 def clean(v:Any)->str:
-    if v is None:return ""
+    if v is None:
+        return ""
     return str(v).replace("\u00a0"," ").replace("\u2013","-").replace("\u2014","-").replace("\u2212","-")
 
 def n(v:Any,default:float=0.0)->float:
@@ -83,7 +92,8 @@ def n(v:Any,default:float=0.0)->float:
         return default
 
 def P(v:Any,style:str="body")->Paragraph:
-    if style not in ST: style="body"
+    if style not in ST:
+        style="body"
     return Paragraph(escape(clean(v)),ST[style])
 
 def fmt(v:Any,d:int=0)->str:return f"{n(v):,.{d}f}"
@@ -127,7 +137,8 @@ def bullet_rows(items,width):
     dot=ParagraphStyle("dot",parent=ST["body"],fontName=BOLD,fontSize=8,leading=10,textColor=AMBER)
     for item in items or []:
         rows.append([Paragraph("•",dot),P(item,"body")])
-    if not rows:return Spacer(1,0)
+    if not rows:
+        return Spacer(1,0)
     t=Table(rows,colWidths=[5*mm,max(width-5*mm,1)])
     t.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),0),
@@ -139,18 +150,19 @@ def bullet_rows(items,width):
 def section_block(name,content,bg=WHITE,pad=7):
     return [flow_group(*section_title(name),panel(content,CW,bg,pad)),Spacer(1,G)]
 
-# ---------- PAGE ----------
 def page_frame(canvas,doc):
     canvas.saveState()
-    canvas.setStrokeColor(LINE);canvas.setLineWidth(.45)
-    canvas.line(L,PH-9.5*mm,PW-R,PH-9.5*mm);canvas.line(L,9.5*mm,PW-R,9.5*mm)
-    canvas.setFillColor(NAVY);canvas.setFont(BOLD,6.5)
+    canvas.setStrokeColor(LINE)
+    canvas.setLineWidth(.45)
+    canvas.line(L,PH-9.5*mm,PW-R,PH-9.5*mm)
+    canvas.line(L,9.5*mm,PW-R,9.5*mm)
+    canvas.setFillColor(NAVY)
+    canvas.setFont(BOLD,6.5)
     canvas.drawString(L,PH-6.7*mm,"FIBRION")
-    canvas.setFillColor(MUTED);canvas.setFont(FONT,6.2)
+    canvas.setFillColor(MUTED)
+    canvas.setFont(FONT,6.2)
     canvas.drawRightString(PW-R,PH-6.7*mm,"PRODUCTION INTELLIGENCE")
     canvas.drawString(L,5.7*mm,"Fibrion AI  |  Operational report")
-    canvas.drawRightString(PW-R,5.7*mm,f"Page {doc.page}")
-    canvas.restoreState()
 
 # ---------- HERO ----------
 class FibrionHero(Flowable):
@@ -512,7 +524,8 @@ def analytics_page(state,kpi):
     ]
 # ---------- EXCEPTIONS ----------
 def anomaly_table(anomalies):
-    if not anomalies:return panel(P("No significant anomalies were detected in this run.","body"),CW,PALE_GREEN,7)
+    if not anomalies:
+        return panel(P("No significant anomalies were detected in this run.","body"),CW,PALE_GREEN,7)
     ordered=sorted(anomalies,key=lambda x:abs(n(x.get("z_score"))),reverse=True)[:12]
     rows=[[P("ORDER","table_h"),P("METRIC","table_h"),P("VALUE","table_h"),P("RUN MEAN","table_h"),P("Z-SCORE","table_h")]]
     for a in ordered:
@@ -541,7 +554,8 @@ def exceptions_page(state):
     critical=sum(1 for x in anomalies if n(x.get("value"))>=100 and "rejection" in str(x.get("metric","")).lower())
     intro=(f"Order {clean(top.get('group_value'))} is the most extreme statistical exception, with "
            f"{clean(top.get('metric')).replace('_',' ')} at {fmt(top.get('value'),2)} and a z-score of {fmt(top.get('z_score'),2)}.")
-    if critical:intro+=f" The anomaly set also contains {critical} complete-rejection observations requiring immediate review."
+    if critical:
+        intro+=f" The anomaly set also contains {critical} complete-rejection observations requiring immediate review."
     return [*section_title("Quality Exceptions"),panel(P(intro,"body"),CW,PALE_RED,7),Spacer(1,G),anomaly_table(anomalies)]
 
 # ---------- CAUSES / ACTIONS ----------

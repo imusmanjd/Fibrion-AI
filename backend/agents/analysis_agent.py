@@ -142,9 +142,9 @@ def run_analysis(state: FibrionState) -> dict:
 
     analysis_text = (
         f"{result.executive_summary}\n\n"
-        f"Key Findings:\n" + "\n".join(f"- {f}" for f in result.key_findings) + "\n\n"
-        f"Likely Causes:\n" + "\n".join(f"- {c}" for c in result.likely_causes) + "\n\n"
-        f"Recommendations:\n" + "\n".join(f"- {r}" for r in result.recommendations)
+        "Key Findings:\n" + "\n".join(f"- {f}" for f in result.key_findings) + "\n\n"
+        "Likely Causes:\n" + "\n".join(f"- {c}" for c in result.likely_causes) + "\n\n"
+        "Recommendations:\n" + "\n".join(f"- {r}" for r in result.recommendations)
     )
 
     logger.info("Analysis generation complete")

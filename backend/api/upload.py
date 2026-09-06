@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from core.logging_config import get_agent_logger
 from orchestration.graph import fibrion_graph

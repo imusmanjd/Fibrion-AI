@@ -15,6 +15,7 @@ resolution attempt - that's reported via state.error, not an exception.
 from pathlib import Path
 from typing import Optional
 import difflib
+import re
 import pandas as pd
 from pydantic import BaseModel, Field, create_model
 
@@ -24,7 +25,6 @@ from core.schema_registry.base import FieldSpec, get_process_module
 from orchestration.state import FibrionState, FieldResolution
 from services.file_parser import FileParseError, parse_file
 
-import re
 logger = get_agent_logger("ingestion")
 
 
