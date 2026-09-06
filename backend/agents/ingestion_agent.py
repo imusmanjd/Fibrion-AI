@@ -24,6 +24,7 @@ from core.schema_registry.base import FieldSpec, get_process_module
 from orchestration.state import FibrionState, FieldResolution
 from services.file_parser import FileParseError, parse_file
 
+import re
 logger = get_agent_logger("ingestion")
 
 
@@ -56,8 +57,6 @@ def _build_mapping_prompt(df: pd.DataFrame, module, data_dictionary: Optional[st
         f"Raw columns, with sample values:\n{chr(10).join(columns_with_samples)}\n\n"
         f"Canonical fields to map to:\n{field_list}"
     )
-
-import re
 
 def _normalize_col_name(name: str) -> str:
     """Strips everything but letters/digits and lowercases - for

@@ -172,7 +172,19 @@ class WeavingModule(ProcessModule):
         # number and never a raw NaN/inf - the latter isn't valid
         # JSON at all, which is what actually crashed the API.
         by_order = by_order.replace([np.inf, -np.inf], np.nan)
-        by_order = by_order.where(pd.notna(by_order), None)
+        # Convert only the numeric metric columns, not the whole frame -
+        # casting the boolean is_supplementary/is_non_order_material
+        # columns to object dtype breaks the `~` filter below (pandas
+        # does bitwise inversion on object-dtype booleans, not logical
+        # negation - ~True becomes -2, which is still truthy).
+        _undefined_safe_cols = [
+            "produced_grey_yds", "rejection_yds", "required_grey_yds",
+            "avg_actual_shrink_pct", "planned_shrink_pct",
+            "fulfillment_pct", "rejection_pct", "shrink_variance_pct",
+        ]
+        for _col in _undefined_safe_cols:
+            if _col in by_order.columns:
+                by_order[_col] = by_order[_col].astype(object).where(by_order[_col].notna(), None)
         # overall is derived from by_order, not recomputed from raw
         # rows - one source of truth, and it's what was actually wrong
         # last time. Supplementary orders excluded here too, same as
