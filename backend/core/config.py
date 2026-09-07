@@ -24,8 +24,15 @@ class Settings(BaseSettings):
     # Telegram
     # Optional for web deployment
     # ---------------------------------------------------------
+    telegram_bot_token: str
 
-    telegram_bot_token: str = ""
+    # --- Database (Phase 2) ---
+    database_url: str = "sqlite:///./fibrion_dev.db"
+
+    # --- Auth ---
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     # ---------------------------------------------------------
     # Email

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.runs import router as runs_router
 from api.upload import router as upload_router
+from api.auth import router as auth_router
 from core.config import settings
 from core.logging_config import configure_logging, get_agent_logger
 
@@ -56,6 +57,7 @@ app.add_middleware(
 
 app.include_router(upload_router)
 app.include_router(runs_router)
+app.include_router(auth_router)
 
 
 # ---------------------------------------------------------

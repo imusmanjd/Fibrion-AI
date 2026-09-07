@@ -21,6 +21,11 @@ out/
 .env.local
 .env.*.local
 
+# Local SQLite dev database (DATABASE_URL falls back to this when
+# unset - never commit it, it's a throwaway local file)
+*.db
+*.db-journal
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

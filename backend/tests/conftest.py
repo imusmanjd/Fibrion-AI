@@ -12,3 +12,4 @@ import os
 
 os.environ.setdefault("OPENROUTER_API_KEY", "test-key-not-real")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-token-not-real")
+os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-not-real")
