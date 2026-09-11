@@ -33,4 +33,4 @@ python-jose[cryptography]==3.*
 email-validator==2.*
 python-jose[cryptography]
 pydantic[email]
-bcrypt
+bcrypt==4.0.1
