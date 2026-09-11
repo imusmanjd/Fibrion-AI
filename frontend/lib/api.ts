@@ -1,15 +1,21 @@
 import type {
   AnalysisRun,
+  AuthUser,
   UploadResponse,
 } from "./types";
 
-// const API_URL =
-//   process.env.NEXT_PUBLIC_API_URL ||
-//   "http://127.0.0.1:8000";
-
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  "/api";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8000";
+
+async function readErrorDetail(response: Response, fallback: string) {
+  try {
+    const body = await response.json();
+    return body?.detail || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export async function uploadDataset(
   file: File,
@@ -45,15 +51,13 @@ export async function uploadDataset(
     `${API_URL}/upload`,
     {
       method: "POST",
+      credentials: "include",
       body: form,
     },
   );
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      body || "Upload failed.",
-    );
+    throw new Error(await readErrorDetail(response, "Upload failed."));
   }
 
   return response.json() as Promise<UploadResponse>;
@@ -64,7 +68,7 @@ export async function getRun(
 ) {
   const response = await fetch(
     `${API_URL}/runs/${runId}`,
-    { cache: "no-store" },
+    { cache: "no-store", credentials: "include" },
   );
 
   if (!response.ok) {
@@ -101,6 +105,7 @@ export async function sendReport(
     `${API_URL}/runs/${runId}/send`,
     {
       method: "POST",
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
       },
@@ -112,11 +117,68 @@ export async function sendReport(
   );
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      body || "Could not send report.",
-    );
+    throw new Error(await readErrorDetail(response, "Could not send report."));
   }
 
   return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export async function registerUser(
+  email: string,
+  password: string,
+  fullName?: string,
+) {
+  const response = await fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, full_name: fullName || null }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, "Could not create account."));
+  }
+
+  return response.json() as Promise<AuthUser>;
+}
+
+export async function loginUser(email: string, password: string) {
+  const response = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorDetail(response, "Could not log in."));
+  }
+
+  return response.json() as Promise<AuthUser>;
+}
+
+export async function logoutUser() {
+  await fetch(`${API_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
+/** Returns the logged-in user, or null if there's no valid session. Never throws. */
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  try {
+    const response = await fetch(`${API_URL}/auth/me`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+    return (await response.json()) as AuthUser;
+  } catch {
+    return null;
+  }
 }

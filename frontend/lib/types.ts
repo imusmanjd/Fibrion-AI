@@ -17,6 +17,13 @@ export type RunStatus = "queued" | "running" | "completed" | "failed";
  */
 export type ProcessType = "weaving";
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  full_name: string | null;
+  created_at: string;
+}
+
 export interface Anomaly {
   group_key: string;
   group_value: string | number;

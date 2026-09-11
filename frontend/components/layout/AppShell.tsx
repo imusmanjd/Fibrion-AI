@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { useAuth } from "@/lib/auth-context";
 
 type NavItem = {
   href: string;
@@ -11,7 +12,7 @@ type NavItem = {
   icon: ReactNode;
 };
 
-function Icon({ name }: { name: "overview" | "analyze" | "datasets" | "reports" | "menu" | "close" }) {
+function Icon({ name }: { name: "overview" | "analyze" | "datasets" | "reports" | "menu" | "close" | "logout" }) {
   const common = {
     width: 17,
     height: 17,
@@ -68,6 +69,14 @@ function Icon({ name }: { name: "overview" | "analyze" | "datasets" | "reports" 
           <path d="M6 6l12 12M18 6 6 18" />
         </svg>
       );
+    case "logout":
+      return (
+        <svg {...common}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      );
   }
 }
 
@@ -91,9 +100,44 @@ function headerLabelFor(pathname: string) {
   return "Fibrion";
 }
 
+const AUTH_ROUTES = ["/login", "/register"];
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const isAuthRoute = AUTH_ROUTES.includes(pathname);
+
+  // Once we know for sure there's no session, bounce to /login - but
+  // never for /login or /register themselves, or this would loop.
+  useEffect(() => {
+    if (!loading && !user && !isAuthRoute) {
+      router.replace("/login");
+    }
+  }, [loading, user, isAuthRoute, router]);
+
+  // /login and /register render full-page, no sidebar/header chrome.
+  if (isAuthRoute) {
+    return <>{children}</>;
+  }
+
+  // While the initial session check is in flight, or right after it
+  // resolves to "no session" (before the redirect above lands), show
+  // nothing but a loading mark rather than flashing protected content.
+  if (loading || !user) {
+    return (
+      <div className="auth-gate-loading">
+        <div className="run-loading-mark" />
+      </div>
+    );
+  }
+
+  async function handleLogout() {
+    await logout();
+    router.push("/login");
+  }
 
   return (
     <div className="app-shell">
@@ -134,6 +178,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="sidebar-foot">
+            <div className="sidebar-user">
+              <span className="sidebar-user-email" title={user.email}>
+                {user.email}
+              </span>
+              <button
+                type="button"
+                className="sidebar-logout"
+                onClick={handleLogout}
+                aria-label="Log out"
+                title="Log out"
+              >
+                <Icon name="logout" />
+              </button>
+            </div>
             <div className="sidebar-status">
               <span className="sidebar-status-dot" />
               Operational
