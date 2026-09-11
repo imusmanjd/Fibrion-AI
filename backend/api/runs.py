@@ -19,10 +19,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from api.deps import get_current_user
+from core.models import User
 from services.email_service import send_email
 from services.run_store import run_store
 from services.telegram_service import send_telegram
@@ -34,25 +36,32 @@ router = APIRouter(
 )
 
 
+def _get_owned_run(run_id: str, current_user: User) -> dict:
+    """
+    Fetches a run and confirms it belongs to the requesting user.
+    Returns 404 for both "doesn't exist" and "exists but isn't
+    yours" - the same response either way, so a request can't be
+    used to fingerprint which run_ids exist for other accounts.
+    """
+    run = run_store.get(run_id)
+
+    if run is None or run.get("user_id") != str(current_user.id):
+        raise HTTPException(status_code=404, detail="Analysis run not found.")
+
+    return run
+
+
 # ---------------------------------------------------------------------------
 # Run information
 # ---------------------------------------------------------------------------
 
 @router.get("/{run_id}")
-def get_run(run_id: str):
+def get_run(run_id: str, current_user: User = Depends(get_current_user)):
     """
     Return the current state/result of a Fibrion analysis run.
     """
 
-    run = run_store.get(run_id)
-
-    if run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Analysis run not found.",
-        )
-
-    return run
+    return _get_owned_run(run_id, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -60,18 +69,12 @@ def get_run(run_id: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{run_id}/report")
-def download_report(run_id: str):
+def download_report(run_id: str, current_user: User = Depends(get_current_user)):
     """
     Download the generated Fibrion PDF report.
     """
 
-    run = run_store.get(run_id)
-
-    if run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Analysis run not found.",
-        )
+    run = _get_owned_run(run_id, current_user)
 
     result = run.get("result") or {}
     report_path = result.get("report_path")
@@ -105,18 +108,13 @@ def download_report(run_id: str):
 def get_chart(
     run_id: str,
     chart_name: str,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Return one generated PNG chart belonging to the analysis run.
     """
 
-    run = run_store.get(run_id)
-
-    if run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Analysis run not found.",
-        )
+    run = _get_owned_run(run_id, current_user)
 
     result = run.get("result") or {}
     chart_paths = result.get("chart_paths") or []
@@ -165,6 +163,7 @@ class SendReportRequest(BaseModel):
 def send_report(
     run_id: str,
     request: SendReportRequest,
+    current_user: User = Depends(get_current_user),
 ):
     """
     Send an already-generated Fibrion report.
@@ -187,13 +186,7 @@ def send_report(
         }
     """
 
-    run = run_store.get(run_id)
-
-    if run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Analysis run not found.",
-        )
+    run = _get_owned_run(run_id, current_user)
 
     result = run.get("result") or {}
     report_path = result.get("report_path")

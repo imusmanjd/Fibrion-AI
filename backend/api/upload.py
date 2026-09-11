@@ -17,10 +17,12 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, HTTPException
 from pydantic import BaseModel
 
+from api.deps import get_current_user
 from core.logging_config import get_agent_logger
+from core.models import User
 from orchestration.graph import fibrion_graph
 from orchestration.state import FibrionState
 from services.run_store import run_store
@@ -112,10 +114,11 @@ async def upload_production_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     process_type: str = Form("weaving"),
-    delivery_channels: str = Form(""),
+    delivery_channels: str = Form("telegram"),
     telegram_chat_id: Optional[str] = Form(None),
     recipient_email: Optional[str] = Form(None),
     data_dictionary: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
@@ -156,6 +159,7 @@ async def upload_production_file(
         run_id=run_id,
         filename=safe_filename,
         process_type=process_type,
+        user_id=str(current_user.id),
     )
 
     background_tasks.add_task(

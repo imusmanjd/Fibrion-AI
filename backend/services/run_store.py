@@ -42,9 +42,11 @@ class RunStore:
         run_id: str,
         filename: str,
         process_type: str,
+        user_id: str,
     ) -> dict[str, Any]:
         record = {
             "run_id": run_id,
+            "user_id": user_id,
             "filename": filename,
             "process_type": process_type,
             "status": "queued",
@@ -75,6 +77,12 @@ class RunStore:
         with self._lock:
             record = self._runs.get(run_id)
             return dict(record) if record else None
+
+    def clear(self) -> None:
+        """Wipes all runs. Used by tests to isolate from each other -
+        never called from application code."""
+        with self._lock:
+            self._runs.clear()
 
     def complete(
         self,

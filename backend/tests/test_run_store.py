@@ -9,12 +9,13 @@ Each test builds its own RunStore() instance rather than using the
 shared run_store singleton, so tests can't interfere with each other.
 """
 
+
 from services.run_store import RunStore, _sanitize_for_json
 
 
 def test_create_returns_queued_record_with_zero_progress():
     store = RunStore()
-    record = store.create(run_id="r1", filename="data.csv", process_type="weaving")
+    record = store.create(run_id="r1", filename="data.csv", process_type="weaving", user_id="u1")
 
     assert record["status"] == "queued"
     assert record["stage"] == "queued"
@@ -25,7 +26,7 @@ def test_create_returns_queued_record_with_zero_progress():
 
 def test_get_returns_a_copy_not_the_live_record():
     store = RunStore()
-    store.create(run_id="r1", filename="data.csv", process_type="weaving")
+    store.create(run_id="r1", filename="data.csv", process_type="weaving", user_id="u1")
 
     fetched = store.get("r1")
     fetched["status"] = "tampered"
@@ -41,7 +42,7 @@ def test_get_unknown_run_returns_none():
 
 def test_update_merges_fields_and_bumps_updated_at():
     store = RunStore()
-    store.create(run_id="r1", filename="data.csv", process_type="weaving")
+    store.create(run_id="r1", filename="data.csv", process_type="weaving", user_id="u1")
     original_updated_at = store.get("r1")["updated_at"]
 
     store.update("r1", status="running", progress=45)
@@ -61,7 +62,7 @@ def test_update_on_unknown_run_is_a_silent_no_op():
 
 def test_complete_sets_status_and_sanitizes_result():
     store = RunStore()
-    store.create(run_id="r1", filename="data.csv", process_type="weaving")
+    store.create(run_id="r1", filename="data.csv", process_type="weaving", user_id="u1")
 
     store.complete("r1", {"kpi_results": {"overall_fulfillment_pct": float("nan")}})
     record = store.get("r1")
@@ -73,7 +74,7 @@ def test_complete_sets_status_and_sanitizes_result():
 
 def test_fail_sets_status_and_preserves_error_detail():
     store = RunStore()
-    store.create(run_id="r1", filename="data.csv", process_type="weaving")
+    store.create(run_id="r1", filename="data.csv", process_type="weaving", user_id="u1")
 
     store.fail("r1", {"type": "ValueError", "message": "bad column"})
     record = store.get("r1")
