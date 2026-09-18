@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LogIn, Sparkles } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { BrandMark } from "@/components/ui/BrandMark";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,27 +34,23 @@ export default function LoginPage() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-card-brand">
-          <span className="brand-mark">
-            <span />
-            <span />
-            <span />
-            <span />
-          </span>
-          <span className="brand-name">Fibrion</span>
+          <BrandMark className="brand-mark" />
+          <span className="brand-name">Fibrion AI</span>
         </div>
 
         <div className="auth-card-header">
-          <h1 className="auth-card-title">Log in</h1>
-          <p className="auth-card-sub">Production intelligence for your weaving data.</p>
+          <h1 className="auth-card-title">Welcome Back</h1>
+          <p className="auth-card-sub">Autonomous intelligence for textile weaving metrics.</p>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="field-group">
-            <span className="field-label">Email</span>
+            <span className="field-label">Email Address</span>
             <input
               className="text-input"
               type="email"
               autoComplete="email"
+              placeholder="name@company.com"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -65,6 +63,7 @@ export default function LoginPage() {
               className="text-input"
               type="password"
               autoComplete="current-password"
+              placeholder="••••••••"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -77,8 +76,19 @@ export default function LoginPage() {
             type="submit"
             className="button button-primary button-large"
             disabled={submitting}
+            style={{ width: "100%", marginTop: 8 }}
           >
-            {submitting ? "Logging in…" : "Log in"}
+            {submitting ? (
+              <>
+                <div className="run-loading-mark" style={{ width: 14, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#ffffff" }} />
+                <span>Authenticating…</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-4 h-4" />
+                <span>Log In</span>
+              </>
+            )}
           </button>
         </form>
 

@@ -1,14 +1,11 @@
 /**
  * frontend/components/results/ChartGallery.tsx
- *
- * chart_paths from the API are full server-side file paths ending in
- * "<name>.png" (see visualization_agent.py). We only need the
- * filename to build a URL via getChartUrl().
  */
 
 "use client";
 
 import { useState } from "react";
+import { ZoomIn, X } from "lucide-react";
 import { getChartUrl } from "@/lib/api";
 import EmptyState from "@/components/ui/EmptyState";
 import { basename, humanizeKey } from "./format";
@@ -35,7 +32,7 @@ export default function ChartGallery({ runId, chartPaths }: ChartGalleryProps) {
     return (
       <EmptyState
         title="No charts generated"
-        description="This run did not produce chart output."
+        description="This run did not produce diagnostic visual chart outputs."
       />
     );
   }
@@ -49,9 +46,27 @@ export default function ChartGallery({ runId, chartPaths }: ChartGalleryProps) {
             key={chart.name}
             className="chart-tile"
             onClick={() => setExpanded(chart.url)}
+            style={{ position: "relative" }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={chart.url} alt={chart.label} loading="lazy" />
+            <div style={{ position: "relative", overflow: "hidden", height: 160 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={chart.url} alt={chart.label} loading="lazy" />
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background: "rgba(0,0,0,0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: 0,
+                  transition: "opacity var(--ease)",
+                }}
+                className="hover:opacity-100 flex items-center justify-center opacity-0 absolute inset-0 bg-black/40 hover:backdrop-blur-sm"
+              >
+                <ZoomIn className="w-5 h-5 text-white" />
+              </div>
+            </div>
             <span>{chart.label}</span>
           </button>
         ))}
@@ -73,7 +88,7 @@ export default function ChartGallery({ runId, chartPaths }: ChartGalleryProps) {
             onClick={() => setExpanded(null)}
             aria-label="Close"
           >
-            ×
+            <X className="w-5 h-5" />
           </button>
         </div>
       )}

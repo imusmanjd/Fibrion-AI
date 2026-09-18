@@ -1,21 +1,38 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
+import {
+  UploadCloud,
+  FileSpreadsheet,
+  Trash2,
+  Sparkles,
+  AlertCircle,
+  CheckCircle2,
+  Cpu,
+  Info,
+  Layers,
+} from "lucide-react";
 
 import { uploadDataset } from "@/lib/api";
 import { rememberRun } from "@/lib/run-cache";
 import RunView from "@/components/run/RunView";
 
 const PROCESS_OPTIONS = [
-  { key: "weaving", label: "Weaving", sub: "Available now", enabled: true },
-  { key: "spinning", label: "Spinning", sub: "Coming soon", enabled: false },
-  { key: "dyeing", label: "Dyeing & finishing", sub: "Coming soon", enabled: false },
-  { key: "garment", label: "Garment", sub: "Coming soon", enabled: false },
+  { key: "weaving", label: "Weaving Module", sub: "Production Loom Intelligence", enabled: true },
+  { key: "spinning", label: "Spinning Module", sub: "Yarn Quality Engine (Roadmap)", enabled: false },
+  { key: "dyeing", label: "Dyeing & Finishing", sub: "Color Shrink Analytics (Roadmap)", enabled: false },
+  { key: "garment", label: "Garment Module", sub: "Assembly & Defect Tracking", enabled: false },
 ];
 
 const PIPELINE_PREVIEW = [
-  "Ingestion", "Validation", "KPI Engine", "AI Analysis",
-  "Visualization", "Report Generation", "Verification", "Notification",
+  "Ingestion & Cleaning",
+  "Schema Validation",
+  "KPI Metrics Engine",
+  "AI Narrative Analysis",
+  "Visualization Generator",
+  "Report PDF Builder",
+  "Dual Truth Verification",
+  "Multi-channel Dispatch",
 ];
 
 const ACCEPTED_EXTENSIONS = [".csv", ".xlsx", ".xls"];
@@ -44,7 +61,7 @@ export default function AnalyzePage() {
     const extension = candidate.name.slice(candidate.name.lastIndexOf(".")).toLowerCase();
 
     if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-      setError(`Unsupported file type "${extension}". Fibrion accepts .csv, .xlsx, or .xls.`);
+      setError(`Unsupported file format "${extension}". Fibrion accepts .csv, .xlsx, or .xls files.`);
       return;
     }
 
@@ -65,10 +82,6 @@ export default function AnalyzePage() {
     setError(null);
 
     try {
-      // No delivery channels collected here — those are offered on
-      // the completed run itself (see DeliveryPanel), via the
-      // existing POST /runs/{id}/send endpoint. Asking for an email
-      // before someone has even seen a result is backwards.
       const response = await uploadDataset(file, processType, []);
 
       rememberRun({
@@ -78,9 +91,6 @@ export default function AnalyzePage() {
         created_at: new Date().toISOString(),
       });
 
-      // Stay on this page — swap the form for the live run view
-      // instead of navigating, so starting and watching an analysis
-      // is one page, not two.
       setActiveRunId(response.run_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed. Please try again.");
@@ -109,20 +119,20 @@ export default function AnalyzePage() {
     <div>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">NEW ANALYSIS</span>
-          <h1 className="page-title">Run a production dataset</h1>
+          <span className="eyebrow">NEW ANALYSIS WORKBENCH</span>
+          <h1 className="page-title">Analyze Production Dataset</h1>
           <p className="page-description">
-            Upload a weaving production file. Fibrion validates it,
-            computes KPIs, flags anomalies, and generates a verified
-            report — usually in well under a minute.
+            Upload raw weaving operational metrics (.csv or .xlsx). Fibrion's 8-stage pipeline validates structure,
+            computes fulfillment &amp; rejection KPIs, flags high z-score anomalies, and generates a verified management PDF.
           </p>
         </div>
       </div>
 
       <div className="workbench-grid">
-        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {/* File Upload Section */}
           <div className="field-group">
-            <span className="field-label">Dataset</span>
+            <span className="field-label">Production Data File</span>
 
             {!file ? (
               <div
@@ -136,13 +146,15 @@ export default function AnalyzePage() {
                 onDrop={handleDrop}
               >
                 <div className="upload-zone-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                    <path d="M12 16V4M12 4 7 9M12 4l5 5" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <UploadCloud className="w-6 h-6" />
                 </div>
-                <div className="upload-zone-title">Drop a file, or click to browse</div>
-                <div className="upload-zone-sub">.csv, .xlsx, or .xls</div>
+                <div className="upload-zone-title">Drop your dataset file here, or click to browse</div>
+                <div className="upload-zone-sub" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span>Supported formats:</span>
+                  <span style={{ padding: "2px 6px", background: "var(--surface-strong)", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}>.CSV</span>
+                  <span style={{ padding: "2px 6px", background: "var(--surface-strong)", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}>.XLSX</span>
+                  <span style={{ padding: "2px 6px", background: "var(--surface-strong)", borderRadius: 4, fontFamily: "var(--font-mono)", fontSize: 11 }}>.XLS</span>
+                </div>
 
                 <input
                   ref={fileInputRef}
@@ -155,26 +167,37 @@ export default function AnalyzePage() {
             ) : (
               <div className="upload-file-row">
                 <div className="upload-file-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <path d="M14 2v6h6" />
-                  </svg>
+                  <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="upload-file-name">{file.name}</div>
-                  <div className="upload-file-size">{formatBytes(file.size)}</div>
+                  <div className="upload-file-size">{formatBytes(file.size)} • Ready for upload</div>
                 </div>
-                <span className="upload-file-remove" onClick={() => setFile(null)}>
-                  Remove
-                </span>
+                <button
+                  type="button"
+                  className="upload-file-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFile(null);
+                  }}
+                  title="Remove file"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             )}
 
-            {error && <p style={{ color: "var(--fault)", fontSize: 12 }}>{error}</p>}
+            {error && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fault)", fontSize: 13, marginTop: 4 }}>
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
           </div>
 
+          {/* Module Select */}
           <div className="field-group">
-            <span className="field-label">Process type</span>
+            <span className="field-label">Manufacturing Process Module</span>
             <div className="option-tile-grid">
               {PROCESS_OPTIONS.map((option) => (
                 <button
@@ -184,46 +207,68 @@ export default function AnalyzePage() {
                   className={`option-tile ${processType === option.key ? "option-tile-active" : ""} ${!option.enabled ? "option-tile-disabled" : ""}`}
                   onClick={() => option.enabled && setProcessType(option.key)}
                 >
-                  <span className="option-tile-title">{option.label}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="option-tile-title">{option.label}</span>
+                    {option.enabled ? (
+                      <CheckCircle2 className="w-4 h-4" style={{ color: "var(--accent-vivid)" }} />
+                    ) : (
+                      <span style={{ fontSize: 10, padding: "2px 6px", background: "var(--surface-strong)", borderRadius: 4, color: "var(--text-faint)" }}>Roadmap</span>
+                    )}
+                  </div>
                   <span className="option-tile-sub">{option.sub}</span>
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Action button */}
           <button
             type="button"
             className="button button-primary button-large"
             disabled={!file || submitting}
             onClick={handleSubmit}
-            style={{ alignSelf: "flex-start" }}
+            style={{ alignSelf: "flex-start", marginTop: 8 }}
           >
-            {submitting ? "Starting analysis…" : "Start analysis"}
+            {submitting ? (
+              <>
+                <div className="run-loading-mark" style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#ffffff" }} />
+                <span>Initializing Pipeline…</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4.5 h-4.5" />
+                <span>Execute Analysis Pipeline</span>
+              </>
+            )}
           </button>
         </div>
 
+        {/* Workbench Rail */}
         <div className="workbench-rail">
           <div className="rail-card">
-            <h4>What happens next</h4>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <Cpu className="w-4 h-4" style={{ color: "var(--accent-vivid)" }} />
+              <h4 style={{ margin: 0 }}>Pipeline Execution Plan</h4>
+            </div>
             <div className="pipeline-preview-list">
               {PIPELINE_PREVIEW.map((label, index) => (
                 <div className="pipeline-preview-item" key={label}>
                   <span className="pipeline-preview-index">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  {label}
+                  <span>{label}</span>
                 </div>
               ))}
             </div>
           </div>
 
           <div className="rail-card">
-            <h4>Note</h4>
-            <p style={{ fontSize: 12, color: "var(--text-soft)", lineHeight: 1.6, margin: 0 }}>
-              Only the Weaving module is registered on the backend today.
-              Other process types are on the roadmap. Once your analysis
-              finishes, you'll get the option to email or Telegram the
-              report — no need to set that up now.
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <Info className="w-4 h-4" style={{ color: "var(--accent-vivid)" }} />
+              <h4 style={{ margin: 0 }}>Processing Note</h4>
+            </div>
+            <p style={{ fontSize: 12.5, color: "var(--text-soft)", lineHeight: 1.6, margin: 0 }}>
+              Currently, the <strong>Weaving Module</strong> is active on the backend. Analysis execution usually takes 15–30 seconds. Upon completion, executive PDFs can be dispatched directly to your Telegram or Email.
             </p>
           </div>
         </div>

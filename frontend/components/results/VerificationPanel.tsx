@@ -1,19 +1,11 @@
 /**
  * frontend/components/results/VerificationPanel.tsx
- *
- * Fields come from verification_agent.py:
- *   verification_passed (bool)
- *   verification_issues (string[], blocking — numeric grounding /
- *     structural checks that failed. Verification fails if any exist.)
- *   verification_advisory_issues (string[], non-blocking — LLM
- *     readability notes. These never fail a run.)
- *
- * Collapsed by default: a trust signal, not primary real estate.
  */
 
 "use client";
 
 import { useState } from "react";
+import { ShieldCheck, AlertCircle, ChevronDown, ChevronUp, Info } from "lucide-react";
 
 type VerificationPanelProps = {
   passed?: boolean | null;
@@ -47,11 +39,17 @@ export default function VerificationPanel({
           }`}
         />
 
-        <span className="verification-summary-text">
-          {passed
-            ? "Verification passed"
-            : "Verification found blocking issues"}
-          {hasDetail && (
+        <div className="verification-summary-text">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>
+              {passed
+                ? "Dual-Truth Verification Passed"
+                : "Verification Found Blocking Discrepancies"}
+            </span>
+            {passed && <ShieldCheck className="w-4 h-4" style={{ color: "var(--ok)" }} />}
+          </div>
+
+          {hasDetail ? (
             <small>
               {blockingCount > 0 &&
                 `${blockingCount} blocking issue${blockingCount === 1 ? "" : "s"}`}
@@ -59,12 +57,15 @@ export default function VerificationPanel({
               {advisoryCount > 0 &&
                 `${advisoryCount} advisory note${advisoryCount === 1 ? "" : "s"}`}
             </small>
+          ) : (
+            <small>All AI-generated narrative claims match verified mathematical ground truth.</small>
           )}
-        </span>
+        </div>
 
         {hasDetail && (
-          <span className="verification-toggle">
-            {open ? "Hide detail" : "Show detail"}
+          <span className="verification-toggle" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span>{open ? "Hide Details" : "Show Details"}</span>
+            {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </span>
         )}
       </button>
@@ -73,7 +74,10 @@ export default function VerificationPanel({
         <div className="verification-detail">
           {blockingCount > 0 && (
             <div>
-              <h4>Blocking issues</h4>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fault)", marginBottom: 8 }}>
+                <AlertCircle className="w-4 h-4" />
+                <h4 style={{ margin: 0, color: "var(--fault)" }}>Blocking Issues</h4>
+              </div>
               <ul>
                 {issues!.map((issue, index) => (
                   <li key={index}>{issue}</li>
@@ -84,7 +88,10 @@ export default function VerificationPanel({
 
           {advisoryCount > 0 && (
             <div>
-              <h4>Advisory notes</h4>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--accent-vivid)", marginBottom: 8 }}>
+                <Info className="w-4 h-4" />
+                <h4 style={{ margin: 0, color: "var(--accent-vivid)" }}>Advisory Notes</h4>
+              </div>
               <ul>
                 {advisoryIssues!.map((issue, index) => (
                   <li key={index}>{issue}</li>

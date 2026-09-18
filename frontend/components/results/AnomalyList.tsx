@@ -1,18 +1,11 @@
 /**
  * frontend/components/results/AnomalyList.tsx
- *
- * kpi_agent.py flags anomalies with a z-score threshold (>2.0 std
- * dev from the group mean), not a severity label — so severity here
- * is derived from the magnitude of z_score, not read off the API.
- * Shape: { group_key, group_value, metric, value, run_mean, z_score }
- *
- * Capped to a handful visible by default — datasets can trip dozens
- * of anomalies, which used to push this section to half the page.
  */
 
 "use client";
 
 import { useState } from "react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
 import { humanizeGroupKey, humanizeMetric } from "./format";
 
 type Anomaly = {
@@ -42,13 +35,12 @@ export default function AnomalyList({ anomalies }: AnomalyListProps) {
   if (list.length === 0) {
     return (
       <div className="anomaly-empty">
-        <span className="status-pill-dot" style={{ background: "var(--ok)" }} />
-        No anomalies detected in this run.
+        <CheckCircle2 className="w-4 h-4" style={{ color: "var(--accent-vivid)" }} />
+        <span>No operational anomalies detected in this run. All metrics fell within expected standard deviations.</span>
       </div>
     );
   }
 
-  // Most severe first, so the capped view surfaces what matters most.
   const sorted = [...list].sort(
     (a, b) => Math.abs(b.z_score) - Math.abs(a.z_score),
   );
@@ -74,18 +66,18 @@ export default function AnomalyList({ anomalies }: AnomalyListProps) {
 
               <div className="anomaly-copy">
                 <strong>
-                  {humanizeGroupKey(anomaly.group_key)} {anomaly.group_value}
+                  {humanizeGroupKey(anomaly.group_key)}: {anomaly.group_value}
                 </strong>
 
                 <span>
-                  {humanizeMetric(anomaly.metric)} is {anomaly.value} —{" "}
+                  {humanizeMetric(anomaly.metric)} is <strong>{anomaly.value}</strong> —{" "}
                   {direction} the run average of {anomaly.run_mean}
                 </span>
               </div>
 
               <span className="anomaly-zscore" title="Standard deviations from the mean">
                 z {anomaly.z_score > 0 ? "+" : ""}
-                {anomaly.z_score}
+                {anomaly.z_score}σ
               </span>
             </li>
           );
@@ -96,10 +88,20 @@ export default function AnomalyList({ anomalies }: AnomalyListProps) {
         <button
           type="button"
           className="button button-secondary"
-          style={{ marginTop: 10 }}
+          style={{ marginTop: 12, fontSize: 12.5 }}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? "Show fewer" : `View all ${sorted.length} anomalies (${hiddenCount} more)`}
+          {expanded ? (
+            <>
+              <span>Collapse anomaly list</span>
+              <ChevronUp className="w-3.5 h-3.5" />
+            </>
+          ) : (
+            <>
+              <span>View all {sorted.length} anomalies ({hiddenCount} hidden)</span>
+              <ChevronDown className="w-3.5 h-3.5" />
+            </>
+          )}
         </button>
       )}
     </>
