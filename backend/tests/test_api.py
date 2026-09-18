@@ -23,6 +23,7 @@ from sqlalchemy.pool import StaticPool
 from core.database import Base, get_db
 from main import app
 from services.run_store import run_store
+from api import upload as upload_api
 
 
 @pytest.fixture()
@@ -146,3 +147,26 @@ def test_chart_lookup_404s_for_unknown_chart(client):
     response = client.get("/runs/run-6/charts/nonexistent.png")
 
     assert response.status_code == 404
+
+
+def test_upload_rejects_unsupported_file_type(client):
+    _register(client)
+
+    response = client.post(
+        "/upload",
+        files={"file": ("unsafe.exe", b"not a dataset", "application/octet-stream")},
+    )
+
+    assert response.status_code == 415
+
+
+def test_upload_rejects_files_over_the_size_limit(client, monkeypatch):
+    _register(client)
+    monkeypatch.setattr(upload_api, "MAX_UPLOAD_BYTES", 4)
+
+    response = client.post(
+        "/upload",
+        files={"file": ("weaving.csv", b"12345", "text/csv")},
+    )
+
+    assert response.status_code == 413

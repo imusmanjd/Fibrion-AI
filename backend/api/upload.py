@@ -12,7 +12,6 @@ The frontend can then poll /runs/{run_id} for progress and results.
 
 from __future__ import annotations
 
-import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -33,6 +32,9 @@ logger = get_agent_logger("api.upload")
 router = APIRouter(tags=["analysis"])
 
 UPLOAD_DIR = Path("outputs/tmp/uploads")
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 class UploadResponse(BaseModel):
@@ -123,6 +125,14 @@ async def upload_production_file(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
 
+    safe_filename = Path(file.filename).name
+    extension = Path(safe_filename).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail="Unsupported file type. Upload a CSV, XLSX, or XLS file.",
+        )
+
     run_id = str(uuid.uuid4())
 
     UPLOAD_DIR.mkdir(
@@ -130,14 +140,24 @@ async def upload_production_file(
         exist_ok=True,
     )
 
-    safe_filename = Path(file.filename).name
     saved_path = UPLOAD_DIR / f"{run_id}_{safe_filename}"
 
-    with saved_path.open("wb") as output_file:
-        shutil.copyfileobj(
-            file.file,
-            output_file,
-        )
+    bytes_written = 0
+    try:
+        with saved_path.open("wb") as output_file:
+            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                bytes_written += len(chunk)
+                if bytes_written > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File exceeds the 25 MB upload limit.",
+                    )
+                output_file.write(chunk)
+    except Exception:
+        saved_path.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.close()
 
     channels = [
         channel.strip()

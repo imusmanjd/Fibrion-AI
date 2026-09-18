@@ -552,7 +552,7 @@ SMTP_USERNAME=
 SMTP_PASSWORD=
 
 # FRONTEND → BACKEND
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+NEXT_PUBLIC_API_URL=/api
 
 Your actual environment configuration may vary depending on which providers and delivery channels are enabled.
 
