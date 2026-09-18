@@ -2,7 +2,7 @@ from datetime import datetime,timezone
 from html import escape
 from pathlib import Path
 from typing import Any
-
+import unicodedata
 import pandas as pd
 from PIL import Image as PILImage
 from reportlab.lib import colors
@@ -79,10 +79,29 @@ ST={
 }
 
 # ---------- HELPERS ----------
-def clean(v:Any)->str:
+def clean(v: Any) -> str:
     if v is None:
         return ""
-    return str(v).replace("\u00a0"," ").replace("\u2013","-").replace("\u2014","-").replace("\u2212","-")
+
+    text = unicodedata.normalize("NFKC", str(v))
+
+    replacements = {
+        "\u00a0": " ",
+        "\u00ad": "",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2012": "-",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2026": "...",
+    }
+
+    return "".join(replacements.get(ch, ch) for ch in text)
 
 def n(v:Any,default:float=0.0)->float:
     try:
@@ -496,8 +515,6 @@ def analytics_page(state,kpi):
             )
         )
 
-    while len(cells)<4:
-        cells.append(panel(P("No additional visualization was generated.","muted"),half,BG,5))
 
     grid=Table([cells[:2],cells[2:4]],colWidths=[half,half])
 
