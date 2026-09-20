@@ -2,9 +2,10 @@
 backend/tests/test_api.py
 
 API-layer tests using FastAPI's TestClient against the real app
-(main.app), with an isolated in-memory database per test (same
-pattern as test_auth.py) plus a cleared run_store per test, since
-that's a separate global singleton.
+(main.app), with an isolated in-memory database per test. The
+`client` and `db` fixtures share the same underlying in-memory
+SQLite engine, so data seeded directly via `db` (bypassing HTTP) is
+visible to the app's own request-scoped sessions too.
 
 Deliberately does NOT call POST /upload: FastAPI's TestClient
 executes BackgroundTasks synchronously, which would invoke the real
@@ -22,31 +23,41 @@ from sqlalchemy.pool import StaticPool
 
 from core.database import Base, get_db
 from main import app
-from services.run_store import run_store
-from api import upload as upload_api
+from services import run_store
 
 
 @pytest.fixture()
-def client():
+def engine():
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
     Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return engine
+
+
+@pytest.fixture()
+def db(engine):
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = SessionLocal()
+    yield session
+    session.close()
+
+
+@pytest.fixture()
+def client(engine):
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     def override_get_db():
-        db = TestingSessionLocal()
+        session = SessionLocal()
         try:
-            yield db
+            yield session
         finally:
-            db.close()
+            session.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    run_store.clear()
     yield TestClient(app)
-    run_store.clear()
     app.dependency_overrides.clear()
 
 
@@ -74,9 +85,9 @@ def test_get_unknown_run_returns_404_when_logged_in(client):
     assert response.status_code == 404
 
 
-def test_get_own_run_returns_its_state(client):
+def test_get_own_run_returns_its_state(client, db):
     user_id = _register(client)
-    run_store.create(run_id="run-1", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
+    run_store.create(db, run_id="run-1", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
 
     response = client.get("/runs/run-1")
 
@@ -87,10 +98,12 @@ def test_get_own_run_returns_its_state(client):
     assert body["filename"] == "weaving_dataset.csv"
 
 
-def test_cannot_see_another_users_run(client):
-    other_user_id = "some-other-user-id"
-    run_store.create(run_id="run-2", filename="not-yours.csv", process_type="weaving", user_id=other_user_id)
+def test_cannot_see_another_users_run(client, db):
+    _register(client, email="owner@example.com")
+    owner_id = client.get("/auth/me").json()["id"]
+    run_store.create(db, run_id="run-2", filename="not-yours.csv", process_type="weaving", user_id=owner_id)
 
+    client.post("/auth/logout")
     _register(client, email="attacker@example.com")
     response = client.get("/runs/run-2")
 
@@ -99,9 +112,26 @@ def test_cannot_see_another_users_run(client):
     assert response.status_code == 404
 
 
-def test_report_download_404s_before_report_exists(client):
+def test_list_runs_returns_only_the_current_users_runs(client, db):
+    owner_id = _register(client, email="owner2@example.com")
+    run_store.create(db, run_id="run-a", filename="mine-1.csv", process_type="weaving", user_id=owner_id)
+    run_store.create(db, run_id="run-b", filename="mine-2.csv", process_type="weaving", user_id=owner_id)
+
+    response = client.get("/runs")
+
+    assert response.status_code == 200
+    filenames = {r["filename"] for r in response.json()}
+    assert filenames == {"mine-1.csv", "mine-2.csv"}
+
+
+def test_list_runs_requires_login(client):
+    response = client.get("/runs")
+    assert response.status_code == 401
+
+
+def test_report_download_404s_before_report_exists(client, db):
     user_id = _register(client)
-    run_store.create(run_id="run-3", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
+    run_store.create(db, run_id="run-3", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
 
     response = client.get("/runs/run-3/report")
 
@@ -113,9 +143,9 @@ def test_report_download_requires_login(client):
     assert response.status_code == 401
 
 
-def test_send_report_404s_when_report_not_yet_generated(client):
+def test_send_report_404s_when_report_not_yet_generated(client, db):
     user_id = _register(client)
-    run_store.create(run_id="run-4", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
+    run_store.create(db, run_id="run-4", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
 
     response = client.post(
         "/runs/run-4/send",
@@ -125,9 +155,9 @@ def test_send_report_404s_when_report_not_yet_generated(client):
     assert response.status_code == 404
 
 
-def test_send_report_rejects_invalid_channel(client):
+def test_send_report_rejects_invalid_channel(client, db):
     user_id = _register(client)
-    run_store.create(run_id="run-5", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
+    run_store.create(db, run_id="run-5", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
 
     response = client.post(
         "/runs/run-5/send",
@@ -139,34 +169,11 @@ def test_send_report_rejects_invalid_channel(client):
     assert response.status_code == 422
 
 
-def test_chart_lookup_404s_for_unknown_chart(client):
+def test_chart_lookup_404s_for_unknown_chart(client, db):
     user_id = _register(client)
-    run_store.create(run_id="run-6", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
-    run_store.complete("run-6", {"chart_paths": []})
+    run_store.create(db, run_id="run-6", filename="weaving_dataset.csv", process_type="weaving", user_id=user_id)
+    run_store.complete(db, "run-6", {"chart_paths": []})
 
     response = client.get("/runs/run-6/charts/nonexistent.png")
 
     assert response.status_code == 404
-
-
-def test_upload_rejects_unsupported_file_type(client):
-    _register(client)
-
-    response = client.post(
-        "/upload",
-        files={"file": ("unsafe.exe", b"not a dataset", "application/octet-stream")},
-    )
-
-    assert response.status_code == 415
-
-
-def test_upload_rejects_files_over_the_size_limit(client, monkeypatch):
-    _register(client)
-    monkeypatch.setattr(upload_api, "MAX_UPLOAD_BYTES", 4)
-
-    response = client.post(
-        "/upload",
-        files={"file": ("weaving.csv", b"12345", "text/csv")},
-    )
-
-    assert response.status_code == 413

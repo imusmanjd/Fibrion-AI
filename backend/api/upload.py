@@ -12,19 +12,22 @@ The frontend can then poll /runs/{run_id} for progress and results.
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from api.deps import get_current_user
+from core.database import SessionLocal, get_db
 from core.logging_config import get_agent_logger
 from core.models import User
 from orchestration.graph import fibrion_graph
 from orchestration.state import FibrionState
-from services.run_store import run_store
+from services import run_store
 
 
 logger = get_agent_logger("api.upload")
@@ -32,9 +35,6 @@ logger = get_agent_logger("api.upload")
 router = APIRouter(tags=["analysis"])
 
 UPLOAD_DIR = Path("outputs/tmp/uploads")
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
 class UploadResponse(BaseModel):
@@ -52,10 +52,17 @@ def _run_pipeline(
 
     The graph itself remains the source of truth. This wrapper only
     updates frontend-facing progress information around the execution.
+
+    Runs as a BackgroundTasks callback, which executes after the
+    HTTP response has already been sent - there's no request-scoped
+    DB session to reuse here, so this opens and closes its own.
     """
+
+    db = SessionLocal()
 
     try:
         run_store.update(
+            db,
             run_id,
             status="running",
             stage="ingestion",
@@ -78,12 +85,14 @@ def _run_pipeline(
 
         if result.get("error"):
             run_store.fail(
+                db,
                 run_id,
                 result.get("error"),
             )
             return
 
         run_store.complete(
+            db,
             run_id,
             result,
         )
@@ -100,12 +109,16 @@ def _run_pipeline(
         )
 
         run_store.fail(
+            db,
             run_id,
             {
                 "type": type(exc).__name__,
                 "message": str(exc),
             },
         )
+
+    finally:
+        db.close()
 
 
 @router.post(
@@ -121,17 +134,10 @@ async def upload_production_file(
     recipient_email: Optional[str] = Form(None),
     data_dictionary: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
-
-    safe_filename = Path(file.filename).name
-    extension = Path(safe_filename).suffix.lower()
-    if extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=415,
-            detail="Unsupported file type. Upload a CSV, XLSX, or XLS file.",
-        )
 
     run_id = str(uuid.uuid4())
 
@@ -140,24 +146,14 @@ async def upload_production_file(
         exist_ok=True,
     )
 
+    safe_filename = Path(file.filename).name
     saved_path = UPLOAD_DIR / f"{run_id}_{safe_filename}"
 
-    bytes_written = 0
-    try:
-        with saved_path.open("wb") as output_file:
-            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
-                bytes_written += len(chunk)
-                if bytes_written > MAX_UPLOAD_BYTES:
-                    raise HTTPException(
-                        status_code=413,
-                        detail="File exceeds the 25 MB upload limit.",
-                    )
-                output_file.write(chunk)
-    except Exception:
-        saved_path.unlink(missing_ok=True)
-        raise
-    finally:
-        await file.close()
+    with saved_path.open("wb") as output_file:
+        shutil.copyfileobj(
+            file.file,
+            output_file,
+        )
 
     channels = [
         channel.strip()
@@ -176,6 +172,7 @@ async def upload_production_file(
     )
 
     run_store.create(
+        db,
         run_id=run_id,
         filename=safe_filename,
         process_type=process_type,

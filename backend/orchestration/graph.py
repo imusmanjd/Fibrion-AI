@@ -48,8 +48,19 @@ from agents.validation_agent import run_validation
 from agents.verification_agent import run_verification
 from agents.visualization_agent import run_visualization
 from orchestration.state import FibrionState
-from services.run_store import run_store
+from core.database import SessionLocal
+from services import run_store
 
+
+def _update_run(run_id: str, **fields) -> None:
+    """Opens and closes its own short-lived session - this runs
+    inside the background pipeline thread, which has no
+    request-scoped session to reuse."""
+    db = SessionLocal()
+    try:
+        run_store.update(db, run_id, **fields)
+    finally:
+        db.close()
 
 # -------------------------------------------------------------------
 # Frontend-facing stage information
@@ -115,7 +126,7 @@ def _set_stage(
         },
     )
 
-    run_store.update(
+    _update_run.update(
         run_id,
         status="running",
         stage=stage,
@@ -142,7 +153,7 @@ def _tracked_node(
             node_error = result.get("error")
 
             if node_error:
-                run_store.update(
+                _update_run.update(
                     run_id,
                     status="running",
                     stage=name,
@@ -154,7 +165,7 @@ def _tracked_node(
                     ),
                 )
             else:
-                run_store.update(
+                _update_run.update(
                     run_id,
                     status="running",
                     stage=name,
