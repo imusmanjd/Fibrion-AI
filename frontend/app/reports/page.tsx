@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { hydrateRuns } from "@/lib/run-cache";
-import { getReportUrl } from "@/lib/api";
+import { getReportUrl, listRuns } from "@/lib/api";
 import type { AnalysisRun } from "@/lib/types";
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -33,9 +32,13 @@ export default function ReportsPage() {
   useEffect(() => {
     let active = true;
 
-    hydrateRuns().then((result) => {
+    listRuns().then((result) => {
       if (active) {
         setRuns(result);
+      }
+    }).catch(() => {
+      if (active) {
+        setRuns([]);
       }
     });
 
@@ -57,9 +60,8 @@ export default function ReportsPage() {
           <h1 className="page-title">Reports</h1>
 
           <p className="page-description">
-            Completed analyses from this browser with a generated report
-            attached. Same local-session scope as Datasets — this becomes
-            a shared history once Phase 2 persistence lands.
+            Completed analyses with a generated report attached,
+            saved to your account.
           </p>
         </div>
       </div>

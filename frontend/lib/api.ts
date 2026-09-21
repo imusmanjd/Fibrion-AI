@@ -80,6 +80,20 @@ export async function getRun(
   return response.json() as Promise<AnalysisRun>;
 }
 
+/** Every run belonging to the current user, newest first. Powers Datasets/Reports/Overview. */
+export async function listRuns(): Promise<AnalysisRun[]> {
+  const response = await fetch(
+    `${API_URL}/runs`,
+    { cache: "no-store", credentials: "include" },
+  );
+
+  if (!response.ok) {
+    throw new Error("Could not retrieve your analysis runs.");
+  }
+
+  return response.json() as Promise<AnalysisRun[]>;
+}
+
 export function getReportUrl(
   runId: string,
 ) {

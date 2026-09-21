@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { hydrateRuns } from "@/lib/run-cache";
+import { listRuns } from "@/lib/api";
 import type { AnalysisRun } from "@/lib/types";
 import StatusPill from "@/components/ui/StatusPill";
 import EmptyState from "@/components/ui/EmptyState";
@@ -27,8 +27,10 @@ export default function DatasetsPage() {
 
   useEffect(() => {
     let active = true;
-    hydrateRuns().then((result) => {
+    listRuns().then((result) => {
       if (active) setRuns(result);
+    }).catch(() => {
+      if (active) setRuns([]);
     });
     return () => {
       active = false;
@@ -42,9 +44,8 @@ export default function DatasetsPage() {
           <span className="eyebrow">INPUT</span>
           <h1 className="page-title">Datasets</h1>
           <p className="page-description">
-            Every file uploaded from this browser, with its current
-            pipeline status. Fibrion's backend doesn't persist run
-            history yet, so this list is local to your session.
+            Every file you've uploaded, with its current pipeline
+            status — saved to your account.
           </p>
         </div>
 

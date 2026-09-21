@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { uploadDataset } from "@/lib/api";
-import { rememberRun } from "@/lib/run-cache";
 import RunView from "@/components/run/RunView";
 
 const PROCESS_OPTIONS = [
@@ -83,13 +82,6 @@ export default function AnalyzePage() {
 
     try {
       const response = await uploadDataset(file, processType, []);
-
-      rememberRun({
-        run_id: response.run_id,
-        filename: file.name,
-        process_type: processType,
-        created_at: new Date().toISOString(),
-      });
 
       setActiveRunId(response.run_id);
     } catch (err) {

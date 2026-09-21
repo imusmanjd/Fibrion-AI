@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { Activity, AlertTriangle, ArrowRight, ArrowUpRight, BarChart3, Bell, BrainCircuit, CheckCircle2, Database, FileCheck, Layers, PieChart, Search, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
-import { hydrateRuns } from "@/lib/run-cache";
+import { listRuns } from "@/lib/api";
 import type { AnalysisRun } from "@/lib/types";
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -26,7 +26,7 @@ export default function OverviewPage() {
   const [runs, setRuns] = useState<AnalysisRun[] | null>(null);
   useEffect(() => {
     let active = true;
-    hydrateRuns().then((result) => active && setRuns(result));
+    listRuns().then((result) => active && setRuns(result)).catch(() => active && setRuns([]));
     return () => { active = false; };
   }, []);
 
