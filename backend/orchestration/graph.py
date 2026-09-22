@@ -126,7 +126,7 @@ def _set_stage(
         },
     )
 
-    _update_run.update(
+    _update_run(
         run_id,
         status="running",
         stage=stage,
@@ -153,7 +153,7 @@ def _tracked_node(
             node_error = result.get("error")
 
             if node_error:
-                _update_run.update(
+                _update_run(
                     run_id,
                     status="running",
                     stage=name,
@@ -165,7 +165,7 @@ def _tracked_node(
                     ),
                 )
             else:
-                _update_run.update(
+                _update_run(
                     run_id,
                     status="running",
                     stage=name,
