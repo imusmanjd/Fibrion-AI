@@ -108,6 +108,8 @@ def _run_pipeline(
             run_id,
         )
 
+        db.rollback() 
+
         run_store.fail(
             db,
             run_id,

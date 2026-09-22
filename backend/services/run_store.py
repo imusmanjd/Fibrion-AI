@@ -22,7 +22,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy.orm import Session
-
+from pydantic import BaseModel
 from core.models import Run
 
 
@@ -34,7 +34,15 @@ def _sanitize_for_json(obj):
     is ever written, same as it did for the in-memory version, just
     more load-bearing now since the failure mode is a write error
     instead of a later JSON-serialization error.
+
+    Also unwraps any Pydantic model (e.g. FieldResolution) that
+    survives into the final state dict - LangGraph merges node
+    outputs into FibrionState, but nested BaseModel instances inside
+    dict/list fields aren't auto-serialized just because the state
+    itself gets dumped to a dict.
     """
+    if isinstance(obj, BaseModel):
+        obj = obj.model_dump(mode="json")
     if isinstance(obj, float):
         return None if (math.isnan(obj) or math.isinf(obj)) else obj
     if isinstance(obj, dict):
