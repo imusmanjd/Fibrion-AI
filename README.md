@@ -1,900 +1,240 @@
-🚀 Fibrion AI
+<div align="center">
+
+# Fibrion AI
+
+**Verified production intelligence for weaving manufacturers.**
+
+Upload a production dataset → get KPIs, anomaly detection, an AI-written analysis, and a management-ready PDF report — with every numerical claim checked against the source data before it's ever delivered.
+
+[![CI](https://github.com/imusmanjd/Fibrion-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/imusmanjd/Fibrion-AI/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-agentic%20pipeline-1C3C3C)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+</div>
+
+---
+
+## Why this exists
+
+LLMs are good at language, not arithmetic — ask one to summarize a spreadsheet and it will happily generate a confident, wrong number. That's a real problem in a manufacturing report someone's going to act on.
+
+Fibrion doesn't let the model do the math. Every KPI is computed deterministically with pandas *before* the LLM ever sees the data, and a dedicated verification agent checks the AI-written narrative's claims back against those numbers before a report goes out. The model's job is to explain what the numbers mean — not to invent them.
+
+## What it does
+
+1. **Upload** a weaving production dataset (`.csv`, `.xlsx`, `.xls`)
+2. **Ingestion** reads and normalizes it — handles messy real-world column names, supplementary orders, and non-order rows automatically
+3. **Validation** checks data quality before anything downstream trusts it
+4. **KPI Engine** computes fulfillment %, rejection %, and shrink variance per order and overall
+5. **Anomaly Detection** flags statistical outliers (z-score based) across orders
+6. **AI Analysis** drafts an executive summary, key findings, likely causes, and recommendations
+7. **Visualization** generates the supporting charts
+8. **Report Generation** assembles a management-ready PDF
+9. **Verification** re-checks every numerical claim in the AI narrative against the actual computed KPIs — a run only completes once this passes
+10. **Notification** delivers the report by email or Telegram, on request
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U["Browser"] -->|HTTPS| FE["Next.js frontend"]
+    FE -->|"/api/* rewrite\n(same-origin in production)"| API["FastAPI backend"]
+
+    API --> AUTHDB[("Postgres · users")]
+    API --> RUNSDB[("Postgres · runs")]
+    API -->|background task| GRAPH["LangGraph pipeline\n(8 agents)"]
+
+    GRAPH --> LLM["OpenRouter / Groq LLMs"]
+    GRAPH --> PDF["reportlab → PDF report"]
+
+    API -->|on request| TG["Telegram"]
+    API -->|on request| EMAIL["SMTP email"]
+```
+
+**Deployment note:** frontend and backend ship as a single Render Web Service — one container runs Next.js on the public port and FastAPI internally on `:8000`, with Next.js's own rewrite proxying `/api/*` to it. The browser only ever talks to one origin.
+
+### The pipeline
+
+```mermaid
+flowchart LR
+    A["01 · Ingestion"] --> B["02 · Validation"] --> C["03 · KPI Engine"] --> D["04 · AI Analysis"] --> E["05 · Visualization"] --> F["06 · Report Generation"] --> G["07 · Verification"] --> H["08 · Notification"]
+```
+
+## Features
+
+| | |
+|---|---|
+| 📤 **Dataset upload** | `.csv` / `.xlsx` / `.xls`, validated before processing |
+| 📊 **Deterministic KPIs** | Fulfillment, rejection, shrink variance — pandas, not the LLM |
+| 🚨 **Anomaly detection** | Z-score outlier flagging per order, with severity |
+| 🧠 **AI analysis** | Executive summary, findings, likely causes, recommendations |
+| 🛡️ **Verification** | AI-written numerical claims checked against real KPI values before release |
+| 📄 **PDF reports** | Generated with `reportlab`, downloadable or sent directly |
+| 📧📱 **Delivery** | Email or Telegram, triggered independently after a run completes |
+| 🔐 **Accounts** | Email/password auth, JWT in an httpOnly cookie |
+| 💾 **Persistence** | Every run is saved to Postgres, scoped to its owner — survives restarts, queryable history |
+| ✅ **Tested** | 46 backend tests (pytest) + lint (ruff), enforced in CI on every push |
+
+## Tech stack
+
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js 15, React, TypeScript |
+| Backend | FastAPI, Python 3.12 |
+| Agentic pipeline | LangGraph |
+| Data processing | pandas, NumPy |
+| Database | PostgreSQL via SQLAlchemy + Alembic migrations |
+| Auth | Passlib (bcrypt) + python-jose (JWT), httpOnly cookie session |
+| PDF generation | ReportLab |
+| Charts | Matplotlib |
+| LLM providers | OpenRouter, Groq (provider-agnostic client) |
+| Delivery | Telegram Bot API, SMTP |
+| Testing | pytest, ruff |
+| CI | GitHub Actions |
+| Deployment | Docker, single-service Render deployment |
+
+## Getting started
+
+### Prerequisites
+- Python 3.12
+- Node.js 18+
+- A Postgres database (a free [Neon](https://neon.tech) instance works well) — or leave `DATABASE_URL` unset and it falls back to a local SQLite file for quick local dev
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Fibrion-AI-00A86B?style=for-the-badge&logo=artificial-intelligence&logoColor=white" alt="Fibrion AI"/>
-  <img src="https://img.shields.io/badge/Agentic-AI-00A86B?style=for-the-badge" alt="Agentic AI"/>
-  <img src="https://img.shields.io/badge/Industrial-Analytics-00A86B?style=for-the-badge" alt="Industrial Analytics"/>
-</p>
+### 1. Clone
 
-<p align="center">
-  <strong>Turn industrial production data into verified intelligence.</strong>
-</p>
-
-<p align="center">
-  Upload a dataset → Analyze it → Detect anomalies → Ask questions → Verify insights → Generate a report → Deliver results
-</p>
-
-🧠 What is Fibrion AI?
-
-Fibrion AI is an agentic AI platform for industrial and manufacturing data analysis.
-
-It is designed to bridge the gap between raw production data and useful operational intelligence.
-
-Instead of treating an LLM as a simple chatbot, Fibrion combines deterministic data analysis with AI reasoning, anomaly detection, verification, reporting, and delivery.
-
-┌──────────────────────┐
-│   Industrial Data    │
-│      CSV / Data      │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│   Data Processing    │
-│   Pandas / NumPy     │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│   Agentic Analysis   │
-│      LangGraph       │
-└──────────┬───────────┘
-           │
-           ├──────────────► 📊 KPIs
-           │
-           ├──────────────► 🚨 Anomalies
-           │
-           ├──────────────► 🧠 AI Insights
-           │
-           ▼
-┌──────────────────────┐
-│     Verification     │
-│  Ground AI Claims    │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│   Report Generation  │
-└──────────┬───────────┘
-           │
-           ├──────────────► 📧 Email
-           │
-           └──────────────► 📱 Telegram
-
-✨ Features
-
-Feature
-
-Description
-
-📤 Dataset Upload
-
-Upload industrial production datasets for analysis
-
-📊 Automated Analytics
-
-Calculate statistics, KPIs, distributions and production metrics
-
-🤖 Agentic AI
-
-Coordinate analysis and reasoning through an agentic workflow
-
-🚨 Anomaly Detection
-
-Identify unusual values and production patterns
-
-🧠 AI Insights
-
-Convert analytical results into understandable industrial narratives
-
-💬 Dataset Q&A
-
-Ask natural-language questions about analyzed data
-
-🛡️ Verification Agent
-
-Check generated numerical claims against analytical results
-
-📄 Automated Reports
-
-Generate structured PDF/lab-style analysis reports
-
-📧 Email Delivery
-
-Deliver generated results through email
-
-📱 Telegram Delivery
-
-Deliver analysis/report results through Telegram
-
-🖥️ Web Dashboard
-
-Explore analysis through a modern Next.js interface
-
-🔌 API Backend
-
-FastAPI endpoints for application and integration workflows
-
-🧩 Multi-LLM Support
-
-Provider-based LLM architecture
-
-🏭 Built for Industrial Data
-
-Fibrion is particularly focused on manufacturing and textile-industry workflows.
-
-A production dataset can contain thousands of records that are difficult to inspect manually.
-
-For example:
-
-Production Records
-        ↓
-Machine / Process Data
-        ↓
-KPIs
-        ↓
-Variations
-        ↓
-Anomalies
-        ↓
-Operational Insights
-
-The objective is not simply to produce a summary.
-
-The objective is to answer:
-
-What happened in the production data, where are the important deviations, and what should the user pay attention to?
-
-🔥 Why Agentic AI?
-
-A conventional LLM workflow might look like:
-
-CSV → LLM → Answer
-
-That creates an important problem:
-
-The LLM may generate a convincing answer that is not actually supported by the data.
-
-Fibrion takes a different approach:
-
-                    DATA
-                      │
-                      ▼
-              ┌──────────────┐
-              │ Data Analysis│
-              └──────┬───────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │   Anomaly    │
-              │   Analysis   │
-              └──────┬───────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │ AI Reasoning │
-              └──────┬───────┘
-                     │
-                     ▼
-              ┌──────────────┐
-              │ Verification │
-              └──────┬───────┘
-                     │
-                     ▼
-                FINAL OUTPUT
-
-Each stage has a different responsibility.
-
-🛡️ Verification-First Intelligence
-
-One of Fibrion's core concepts is verification of AI-generated numerical claims.
-
-LLMs are excellent at language and reasoning, but numerical hallucinations can be dangerous in industrial applications.
-
-Fibrion therefore includes a dedicated verification stage.
-
-AI Generated Statement
-          │
-          ▼
-   Extract Claims
-          │
-          ▼
-Compare With Analysis
-          │
-     ┌────┴────┐
-     │         │
-     ▼         ▼
-   ✅ Valid   ❌ Unsupported
-
-Example
-
-If the AI generates:
-
-Total production exceeded the required
-production target.
-
-the verification process should ensure that the underlying calculated values actually support that statement.
-
-The same principle applies to numerical values:
-
-AI Claim
-   ↓
-Calculated Dataset Value
-   ↓
-Verification
-   ↓
-Supported / Unsupported
-
-This is especially important when dealing with:
-
-Production quantities
-
-Required quantities
-
-Percentages
-
-Variances
-
-KPIs
-
-Statistical values
-
-Aggregated production metrics
-
-📊 Industrial Analytics
-
-Fibrion can transform raw production data into analytical information such as:
-
-┌──────────────────────────────────────┐
-│          PRODUCTION KPIs             │
-├──────────────────────────────────────┤
-│                                      │
-│  Total Production                    │
-│  Required Production                 │
-│  Production Variance                 │
-│  Average Performance                 │
-│  Minimum / Maximum                   │
-│  Distribution Statistics             │
-│                                      │
-└──────────────────────────────────────┘
-
-The exact metrics depend on the uploaded dataset and its available columns.
-
-🚨 Anomaly Detection
-
-Production data is rarely perfectly uniform.
-
-Fibrion is designed to identify unusual observations and patterns that deserve attention.
-
-Examples include:
-
-🔎 Unusually high production
-
-🔎 Unusually low production
-
-🔎 Large deviations
-
-🔎 Unexpected patterns
-
-🔎 KPI abnormalities
-
-🔎 Potential data-quality issues
-
-Anomalies can then be incorporated into the AI analysis.
-
-Dataset
-   │
-   ▼
-Statistical Analysis
-   │
-   ▼
-Outlier / Deviation Detection
-   │
-   ▼
-🚨 Anomaly List
-   │
-   ▼
-AI Interpretation
-
-💬 Ask Questions About Your Dataset
-
-Fibrion is designed to let users interact with the analyzed dataset instead of relying only on a static report.
-
-Example questions:
-
-Which period had the highest production?
-
-Which values look unusual?
-
-What are the major production deviations?
-
-What are the most important KPIs?
-
-What anomalies were detected?
-
-Summarize the production performance.
-
-What should I investigate first?
-
-The goal is to make the dataset conversational without losing the connection to the underlying analysis.
-
-📄 Automated Reporting
-
-After the analytical workflow completes, Fibrion can turn the results into a structured report.
-
-A typical report can contain:
-
-📄 INDUSTRIAL ANALYSIS REPORT
-
-├── Executive Summary
-├── Dataset Overview
-├── Key Performance Indicators
-├── Production Analysis
-├── Anomaly Findings
-├── AI-Generated Insights
-├── Verification Results
-└── Analytical Visualizations
-
-The report-generation workflow is designed to reduce the need to manually transform analysis output into a presentable document.
-
-📬 Multi-Channel Delivery
-
-Fibrion is not limited to the web interface.
-
-The architecture supports delivery workflows through:
-
-                  Fibrion AI
-                      │
-             ┌────────┴────────┐
-             │                 │
-             ▼                 ▼
-        📧 Email           📱 Telegram
-             │                 │
-             └────────┬────────┘
-                      ▼
-                User / Team
-
-This is useful for industrial workflows where reports and alerts may need to reach people outside the main dashboard.
-
-🖥️ Application Architecture
-
-┌─────────────────────────────────────────────────┐
-│                   FRONTEND                      │
-│                                                 │
-│              Next.js / React                    │
-│                                                 │
-│ Upload │ Results │ KPIs │ Charts │ Q&A          │
-└───────────────────────┬─────────────────────────┘
-                        │
-                        │ HTTP API
-                        ▼
-┌─────────────────────────────────────────────────┐
-│                    API                          │
-│                                                 │
-│                  FastAPI                        │
-│                                                 │
-│ Upload API │ Run API │ Report / Delivery        │
-└───────────────────────┬─────────────────────────┘
-                        │
-                        ▼
-┌─────────────────────────────────────────────────┐
-│                AGENTIC CORE                     │
-│                                                 │
-│                  LangGraph                      │
-│                                                 │
-│ Analysis → Anomaly → Reasoning → Verification  │
-└───────────────────────┬─────────────────────────┘
-                        │
-              ┌─────────┴──────────┐
-              ▼                    ▼
-       ┌──────────────┐     ┌──────────────┐
-       │ DATA LAYER   │     │   LLM LAYER  │
-       │              │     │              │
-       │ Pandas       │     │ Gemini       │
-       │ NumPy        │     │ Groq         │
-       │ CSV          │     │ OpenRouter   │
-       └──────────────┘     │ Hugging Face │
-                            └──────────────┘
-
-🧩 Technology Stack
-
-Frontend
-
-⚛️ React
-
-▲ Next.js
-
-📘 TypeScript
-
-🎨 Modern responsive UI
-
-Backend
-
-🐍 Python
-
-⚡ FastAPI
-
-🚀 Uvicorn
-
-Data & Analytics
-
-🐼 Pandas
-
-🔢 NumPy
-
-📊 Statistical analysis
-
-📈 Data visualization
-
-AI
-
-🤖 LangGraph
-
-🧠 Large Language Models
-
-🔌 Provider-based LLM architecture
-
-🛡️ Verification workflows
-
-Communication
-
-📱 Telegram
-
-📧 SMTP / Email
-
-Deployment
-
-🐳 Containerized deployment
-
-☁️ Render-compatible deployment architecture
-
-📁 Project Structure
-
-The project is organized around the frontend, API layer, agentic backend, and communication interfaces.
-
-Fibrion-AI/
-│
-├── api/
-│   ├── upload.py
-│   └── runs.py
-│
-├── backend/
-│   ├── agents/
-│   │   └── verification_agent.py
-│   │
-│   ├── core/
-│   │   └── llm_client.py
-│   │
-│   └── ...
-│
-├── bot/
-│   └── telegram_bot.py
-│
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── lib/
-│   └── ...
-│
-├── Dockerfile
-├── start.sh
-├── requirements.txt
-└── README.md
-
-The repository structure may evolve as the project continues to develop.
-
-🚀 Getting Started
-
-1. Clone the Repository
-
-git clone https://github.com/usmanxjavaid/Fibrion-AI.git
-
+```bash
+git clone https://github.com/imusmanjd/Fibrion-AI.git
 cd Fibrion-AI
+```
 
-🐍 Backend Setup
+### 2. Backend
 
-Create a virtual environment:
-
+```bash
+cd backend
 python -m venv .venv
-
-Windows
-
-.venv\Scripts\activate
-
-Install Dependencies
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS/Linux
 
 pip install -r requirements.txt
-
-Start FastAPI
-
+cp .env.example .env          # fill in your keys — see below
+alembic upgrade head          # creates the users/runs tables
 uvicorn main:app --reload
+```
+Backend runs at `http://127.0.0.1:8000`.
 
-The backend will normally run at:
+### 3. Frontend
 
-http://127.0.0.1:8000
-
-⚛️ Frontend Setup
-
-Navigate to the frontend:
-
+```bash
 cd frontend
-
-Install packages:
-
 npm install
-
-Start the development server:
-
 npm run dev
-
-The frontend will normally run at:
-
-http://localhost:3000
-
-🔐 Environment Configuration
-
-Fibrion uses environment variables for external services and secrets.
-
-Example configuration:
-
-# LLM PROVIDERS
-GEMINI_API_KEY=
-GROQ_API_KEY=
-OPENROUTER_API_KEY=
-HF_TOKEN=
-
-# TELEGRAM
-TELEGRAM_BOT_TOKEN=
-
-# EMAIL
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USERNAME=
-SMTP_PASSWORD=
-
-# FRONTEND → BACKEND
-NEXT_PUBLIC_API_URL=/api
-
-Your actual environment configuration may vary depending on which providers and delivery channels are enabled.
-
-⚠️ Never commit secrets
-
-Never commit:
-
-.env
-API keys
-Telegram bot tokens
-SMTP passwords
-Private credentials
-
-Use environment variables locally and configure secrets securely in your deployment platform.
-
-🔄 End-to-End Workflow
-
-A complete Fibrion workflow can be visualized as:
-
-                 👤 USER
-                   │
-                   ▼
-             📤 Upload Dataset
-                   │
-                   ▼
-            🔎 Inspect Dataset
-                   │
-                   ▼
-             📊 Analyze Data
-                   │
-                   ▼
-             📈 Calculate KPIs
-                   │
-                   ▼
-            🚨 Detect Anomalies
-                   │
-                   ▼
-             🧠 AI Reasoning
-                   │
-                   ▼
-             🛡️ Verification
-                   │
-                   ▼
-             📄 Build Report
-                   │
-          ┌────────┴────────┐
-          ▼                 ▼
-      📧 Email          📱 Telegram
-
-🧪 Development Checklist
-
-Before deploying a change, verify:
-
-✓ Backend starts
-✓ Frontend builds
-✓ Dataset upload works
-✓ Analysis run completes
-✓ KPIs are calculated
-✓ Anomalies are returned
-✓ AI analysis is generated
-✓ Numerical claims are verified
-✓ Report generation works
-✓ Telegram delivery works
-✓ Email delivery works
-✓ Production environment variables are configured
-
-☁️ Deployment
-
-Fibrion is structured for deployment using a containerized environment.
-
-A production deployment can follow:
-
-                  🌍 Internet
-                      │
-                      ▼
-              ┌───────────────┐
-              │    Frontend   │
-              │    Next.js    │
-              └───────┬───────┘
-                      │
-                      ▼
-              ┌───────────────┐
-              │    FastAPI    │
-              │    Backend    │
-              └───────┬───────┘
-                      │
-                      ▼
-              ┌───────────────┐
-              │ Agentic AI    │
-              │ Pipeline      │
-              └───────┬───────┘
-                      │
-          ┌───────────┴───────────┐
-          ▼                       ▼
-     🧠 LLM Provider         📄 Reports
-                                  │
-                          ┌───────┴───────┐
-                          ▼               ▼
-                       📧 Email       📱 Telegram
-
-Render or another container-compatible hosting platform can be used with the project's deployment configuration.
-
-🔬 Example Use Case — Textile Manufacturing
-
-Consider a weaving production dataset.
-
-Production Data
-      │
-      ├── Production quantity
-      ├── Required production
-      ├── Time-based records
-      ├── Process information
-      └── Other operational variables
-
-Fibrion can transform this into:
-
-📊 Production KPIs
-
-🚨 Important anomalies
-
-📈 Production trends
-
-🧠 AI interpretation
-
-🛡️ Verified numerical claims
-
-📄 Industrial report
-
-📱 Delivery to the user
-
-This is the broader vision behind Fibrion:
-
-Combine textile/manufacturing domain knowledge with modern AI systems.
-
-🧠 Design Principles
-
-01 — 📊 Data First
-
-The underlying dataset should remain the foundation of the analysis.
-
-02 — 🧮 Calculate Before Reasoning
-
-Important numerical information should come from deterministic data processing whenever possible.
-
-03 — 🛡️ Verify Before Communicating
-
-AI-generated numerical claims should be checked against available analytical results.
-
-04 — 🤖 AI for Interpretation
-
-The LLM should help explain and reason about analytical results rather than blindly inventing them.
-
-05 — 🏭 Industrial Relevance
-
-The final output should be useful for real production and manufacturing workflows.
-
-06 — 👤 Human in the Loop
-
-Fibrion is designed to assist industrial users, not replace responsible human decision-making.
-
-🔒 Security & Reliability
-
-Fibrion may process operational datasets and communicate results through external services.
-
-Production deployments should therefore consider:
-
-🔐 Secret management
-
-🔒 HTTPS
-
-👤 Authentication
-
-🧾 Access control
-
-📦 File validation
-
-📊 Data privacy
-
-🧹 Temporary-file cleanup
-
-🚦 API rate limiting
-
-📝 Logging and monitoring
-
-🛡️ Safe handling of generated reports
-
-Do not expose production credentials through source code, frontend bundles, logs, or Git history.
-
-⚠️ Project Status
-
-Fibrion AI is an actively developed project.
-
-Some components are still evolving, particularly around:
-
-Advanced industrial forecasting
-
-Predictive maintenance
-
-Real-time production monitoring
-
-Enterprise authentication
-
-Large-scale deployment
-
-Advanced multi-agent collaboration
-
-Industrial system integrations
-
-Fibrion should therefore be treated as an evolving intelligent analytics platform rather than an autonomous industrial control system.
-
-🗺️ Roadmap
-
-✅ Current Direction
-
-Industrial dataset ingestion
-
-FastAPI backend
-
-Next.js frontend
-
-Agentic analysis workflow
-
-LLM integration
-
-Anomaly analysis
-
-Verification architecture
-
-Automated report generation
-
-Telegram integration
-
-Email delivery architecture
-
-Dataset-oriented AI interaction
-
-Industrial analytics dashboard
-
-🔮 Future
-
-Advanced forecasting
-
-Predictive maintenance
-
-Machine-level intelligence
-
-Production optimization
-
-Real-time monitoring
-
-Historical production comparison
-
-Advanced RAG for industrial knowledge
-
-ERP / MES integration
-
-Enterprise authentication
-
-Role-based dashboards
-
-Intelligent KPI alerts
-
-More communication channels
-
-Advanced multi-agent collaboration
-
-🤝 Contributing
-
-Contributions, suggestions and improvements are welcome.
-
-Create a feature branch
-
+```
+Frontend runs at `http://localhost:3000` and talks to the backend directly in dev (no proxy needed locally).
+
+### 4. Try it
+
+Open `http://localhost:3000`, create an account, and upload a weaving production dataset. A sample dataset is available — see [Dataset](#dataset) below.
+
+## Environment variables
+
+Set these in `backend/.env` (see `backend/.env.example` for the template):
+
+<details>
+<summary><strong>Click to expand full list</strong></summary>
+
+| Variable | Required | Notes |
+|---|---|---|
+| `OPENROUTER_API_KEY` | ✅ | LLM provider |
+| `TELEGRAM_BOT_TOKEN` | ✅ | Required even if you don't use Telegram delivery |
+| `JWT_SECRET_KEY` | ✅ | Any long random string — generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `DATABASE_URL` | – | Postgres connection string. Falls back to a local SQLite file if unset |
+| `GROQ_API_KEY` | – | Optional second LLM provider |
+| `DEFAULT_MODEL_FAST` / `DEFAULT_MODEL_REASONING` | – | Model IDs, sensible defaults provided |
+| `SMTP_HOST` / `SMTP_PORT` / `EMAIL_ADDRESS` / `EMAIL_APP_PASSWORD` | – | Only needed for email delivery |
+| `FIBRION_ENV` | – | `development` (default) or `production` — controls cookie `Secure` flag |
+| `LOG_LEVEL` | – | Defaults to `INFO` |
+
+</details>
+
+Frontend: `NEXT_PUBLIC_API_URL` (optional) — defaults to `/api` in production (see the deployment note above) or `http://127.0.0.1:8000` in local dev.
+
+## Testing & CI
+
+```bash
+cd backend
+ruff check .
+pytest -q
+```
+46 tests covering KPI math, anomaly detection, file parsing, the full auth flow (register/login/logout/ownership isolation), and run persistence — all running against a real, isolated in-memory database per test, no mocking of the actual logic. Both checks run in GitHub Actions on every push and PR to `main`.
+
+## Project structure
+
+Fibrion-AI/
+├── backend/
+│ ├── agents/ # the 8 pipeline agents
+│ ├── api/ # upload, runs, auth routes
+│ ├── core/ # config, database, models, schema_registry
+│ ├── orchestration/ # LangGraph wiring
+│ ├── services/ # run_store, auth_service, file_parser, email/telegram
+│ ├── bot/ # standalone Telegram bot
+│ ├── alembic/ # DB migrations
+│ ├── tests/
+│ └── main.py
+├── frontend/
+│ ├── app/ # Next.js App Router pages
+│ ├── components/
+│ └── lib/ # API client, auth context, types
+├── Dockerfile # single-container deploy (see Architecture)
+├── start.sh
+└── .github/workflows/ci.yml
+
+
+## Dataset
+
+Fibrion was built and validated against the **`full_weaving_dataset`** (121,148 rows × 18 columns) published on Mendeley Data:
+
+> Ahmed, T. (2023). *full_weaving_dataset*. Mendeley Data, V1. [https://doi.org/10.17632/nxb4shgs9h.1](https://doi.org/10.17632/nxb4shgs9h.1)
+> Accompanying paper: Ahmed & Uddin, *"Textile weaving dataset for machine learning to predict rejection and production of a weaving factory,"* Data in Brief, 2023. [https://doi.org/10.1016/j.dib.2023.108995](https://doi.org/10.1016/j.dib.2023.108995)
+> Collected at the National Institute of Textile Engineering and Research (NITER) / Evince Textiles Ltd., Bangladesh.
+
+Working with a real production dataset (not synthetic data) is what surfaced the edge cases Fibrion actually handles: supplementary orders, non-order material rows, and undefined-metric division-by-zero cases that need to degrade to `null` rather than crash the API.
+
+## Roadmap
+
+**Done**
+- [x] Core 8-agent LangGraph pipeline
+- [x] Deterministic KPI computation + z-score anomaly detection
+- [x] Verification-gated AI analysis
+- [x] PDF report generation
+- [x] Email + Telegram delivery
+- [x] Auth (JWT / httpOnly cookie)
+- [x] Postgres persistence (users + runs, Alembic-migrated)
+- [x] Test suite + CI
+
+**Next**
+- [ ] Additional process modules (spinning, dyeing & finishing, garment) — only Weaving is registered today
+- [ ] Dataset Q&A (ask questions about a completed run)
+- [ ] Rate limiting
+- [ ] Role-based access for team accounts
+
+## Contributing
+
+```bash
 git checkout -b feature/my-feature
-
-Make your changes
-
-git add .
-
-Commit
-
+# make changes
 git commit -m "feat: add my feature"
-
-Push
-
 git push origin feature/my-feature
+```
+Then open a PR. `ruff check .` and `pytest -q` must both pass — CI will check.
 
-Then open a Pull Request.
+## License
 
-📜 License
+[MIT](LICENSE) © 2026 Usman Javaid
 
-See the LICENSE file in this repository for the applicable license and terms.
+## Author
 
-👨‍💻 Author
-
-Usman Javaid
-
-Textile Engineering × Artificial Intelligence
-
-Fibrion AI is being developed around a simple idea:
-
-Industrial domain knowledge becomes significantly more powerful when combined with modern AI engineering.
-
-The long-term vision is to build practical AI systems for textile and manufacturing industries — systems that do more than chat, and instead analyze, reason, verify, report and deliver.
-
-⭐ Support Fibrion AI
-
-If you find the project interesting:
-
-⭐ Star the repository
-🐛 Report bugs
-💡 Suggest features
-🤝 Contribute
-📢 Share the project
-
-<p align="center">
-
-🚀 Fibrion AI
-
-Raw Data
-
-↓
-
-📊 Analytics
-
-↓
-
-🤖 Agentic Intelligence
-
-↓
-
-🛡️ Verification
-
-↓
-
-📄 Automated Reporting
-
-↓
-
-🏭 Industrial Intelligence
-
-</p>
-
-<p align="center">
-<strong>Fibrion AI — From production data to verified industrial intelligence.</strong>
-</p>
+**Usman Javaid** — Textile Engineering × AI. Built around the idea that domain expertise plus solid engineering beats a chatbot wrapper: analyze, verify, report, deliver.
