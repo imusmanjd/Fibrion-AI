@@ -173,25 +173,40 @@ pytest -q
 
 ## Project structure
 
+```text
 Fibrion-AI/
 ├── backend/
-│ ├── agents/ # the 8 pipeline agents
-│ ├── api/ # upload, runs, auth routes
-│ ├── core/ # config, database, models, schema_registry
-│ ├── orchestration/ # LangGraph wiring
-│ ├── services/ # run_store, auth_service, file_parser, email/telegram
-│ ├── bot/ # standalone Telegram bot
-│ ├── alembic/ # DB migrations
-│ ├── tests/
-│ └── main.py
+│   ├── agents/          # 8 pipeline agents
+│   ├── api/             # upload, runs, auth routes
+│   ├── core/            # config, database, models, schemas
+│   ├── orchestration/   # LangGraph pipeline wiring
+│   ├── services/        # run store, auth, parsing, delivery
+│   ├── bot/             # standalone Telegram bot
+│   ├── alembic/         # database migrations
+│   ├── sample_data/     # sample weaving dataset
+│   ├── tests/           # backend tests
+│   ├── main.py          # FastAPI application entry point
+│   ├── requirements.txt
+│   ├── alembic.ini
+│   ├── pytest.ini
+│   └── .env.example
 ├── frontend/
-│ ├── app/ # Next.js App Router pages
-│ ├── components/
-│ └── lib/ # API client, auth context, types
-├── Dockerfile # single-container deploy (see Architecture)
-├── start.sh
-└── .github/workflows/ci.yml
-
+│   ├── app/             # Next.js App Router pages
+│   │   ├── analysis/
+│   │   ├── analyze/
+│   │   ├── datasets/
+│   │   ├── login/
+│   │   ├── register/
+│   │   └── reports/
+│   ├── components/
+│   │   ├── layout/
+│   │   ├── results/
+│   │   ├── run/
+│   │   └── ui/
+│   └── lib/             # API client, auth context, types
+├── .github/workflows/   # CI workflow
+├── Dockerfile           # single-container deployment
+└── start.sh             # starts Next.js + FastAPI
 
 ## Dataset
 
