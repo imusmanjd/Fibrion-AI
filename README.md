@@ -46,7 +46,7 @@ flowchart TD
 
     API --> AUTHDB[("Postgres · users")]
     API --> RUNSDB[("Postgres · runs")]
-    API -->|background task| GRAPH["LangGraph pipeline\n(8 agents)"]
+    API -->|background task| GRAPH["LangGraph pipeline\n(9 agents)"]
 
     GRAPH --> LLM["OpenRouter / Groq LLMs"]
     GRAPH --> PDF["reportlab → PDF report"]
@@ -61,7 +61,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A["01 · Ingestion"] --> B["02 · Validation"] --> C["03 · KPI Engine"] --> D["04 · AI Analysis"] --> E["05 · Visualization"] --> F["06 · Report Generation"] --> G["07 · Verification"] --> H["08 · Notification"]
+    A["01 · Ingestion"] --> B["02 · Validation"] --> C["03 · KPI Engine"] --> D["04 · Anomaly Detection"] --> E["05 · AI Analysis"] --> F["06 · Visualization"] --> G["07 · Report Generation"] --> H["08 · Verification"] --> I["09 · Notification"]
 ```
 
 ## Features
@@ -176,25 +176,35 @@ pytest -q
 ```text
 Fibrion-AI/
 ├── backend/
-│   ├── agents/          # 8 pipeline agents
-│   ├── api/             # upload, runs, auth routes
-│   ├── core/            # config, database, models, schemas
-│   ├── orchestration/   # LangGraph pipeline wiring
-│   ├── services/        # run store, auth, parsing, delivery
-│   ├── bot/             # standalone Telegram bot
-│   ├── alembic/         # database migrations
-│   ├── sample_data/     # sample weaving dataset
-│   ├── tests/           # backend tests
-│   ├── main.py          # FastAPI application entry point
+│   ├── agents/                  # analysis pipeline agents
+│   ├── api/                     # auth, upload, run endpoints
+│   ├── core/
+│   │   ├── schema_registry/     # process-specific dataset schemas
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── llm_client.py
+│   │   ├── logging_config.py
+│   │   └── models.py
+│   ├── orchestration/
+│   │   ├── graph.py             # LangGraph pipeline
+│   │   └── state.py             # pipeline state
+│   ├── services/                # auth, parsing, persistence, delivery
+│   ├── bot/                     # Telegram bot
+│   ├── alembic/
+│   │   └── versions/            # database migrations
+│   ├── sample_data/             # sample weaving datasets
+│   ├── tests/                   # backend test suite
+│   ├── main.py                  # FastAPI entry point
 │   ├── requirements.txt
 │   ├── alembic.ini
 │   ├── pytest.ini
 │   └── .env.example
+│
 ├── frontend/
-│   ├── app/             # Next.js App Router pages
-│   │   ├── analysis/
-│   │   ├── analyze/
-│   │   ├── datasets/
+│   ├── app/
+│   │   ├── analysis/[runId]/    # analysis results
+│   │   ├── analyze/             # dataset upload
+│   │   ├── datasets/            # dataset/run history
 │   │   ├── login/
 │   │   ├── register/
 │   │   └── reports/
@@ -203,10 +213,22 @@ Fibrion-AI/
 │   │   ├── results/
 │   │   ├── run/
 │   │   └── ui/
-│   └── lib/             # API client, auth context, types
-├── .github/workflows/   # CI workflow
-├── Dockerfile           # single-container deployment
-└── start.sh             # starts Next.js + FastAPI
+│   ├── lib/                     # API, auth, types, preferences
+│   ├── .env.local.example
+│   ├── next.config.ts
+│   ├── package.json
+│   └── tsconfig.json
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── Dockerfile
+├── start.sh
+├── .dockerignore
+├── .gitignore
+├── LICENSE
+└── README.md
+```
 
 ## Dataset
 
@@ -221,7 +243,7 @@ Working with a real production dataset (not synthetic data) is what surfaced the
 ## Roadmap
 
 **Done**
-- [x] Core 8-agent LangGraph pipeline
+- [x] Core 9-agent LangGraph pipeline
 - [x] Deterministic KPI computation + z-score anomaly detection
 - [x] Verification-gated AI analysis
 - [x] PDF report generation
